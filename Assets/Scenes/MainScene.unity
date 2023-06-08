@@ -2371,7 +2371,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &211308106
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3363,7 +3363,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerList: []
   state: 0
-  TargetNumber: 5
   waitAfterEnding: 5
   startWaitSeconds: 3
   endWaitSeconds: 3
@@ -3893,7 +3892,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &338379533
 RectTransform:
   m_ObjectHideFlags: 0
@@ -3910,7 +3909,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 88, y: 291}
+  m_AnchoredPosition: {x: 88, y: -13}
   m_SizeDelta: {x: 600, y: 300}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &338379534
@@ -22417,8 +22416,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f5dc3e5fe63ac3429c7298bd4c07bd6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  minute: 1
-  seconds: 30
+  minute_default: 1
+  seconds_default: 30
 --- !u!4 &1612328867
 Transform:
   m_ObjectHideFlags: 0
@@ -30181,7 +30180,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerList: []
   state: 0
-  TargetNumber: 5
   waitAfterEnding: 5
   startWaitSeconds: 3
   endWaitSeconds: 3

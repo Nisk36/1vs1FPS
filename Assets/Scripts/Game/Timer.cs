@@ -39,6 +39,7 @@ public class Timer : MonoBehaviour
         oldSeconds = 0f;
         timerText.text = minute.ToString() + ":" + ((int) seconds).ToString();
         isTimeUp = false;
+        mCurrentIndex = 0;
     }
 
     public void UpdateTimer(Text timerText)
@@ -95,6 +96,7 @@ public class Timer : MonoBehaviour
         {
             case 0: // カウントダウンテキストを表示
                 countDownText.gameObject.SetActive(true);
+                countDownText.text = "3";
                 mDurationTime = 1.0f;
                 mCurrentIndex++;
                 break;
