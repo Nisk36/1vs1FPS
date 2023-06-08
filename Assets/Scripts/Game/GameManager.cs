@@ -193,7 +193,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                     timer.Initilize(uiManager.TimerText);   
                 }
                 //ÉäÉXÉ|Å[Éì
-                if (spawnManager != null)
+                if (spawnManager != null && playerObj != null)
                 {
                     spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);   
                 }
