@@ -4,25 +4,57 @@ using UnityEngine;
 public class UIManager : MonoBehaviour
 {
     //ammoText
-    public Text bulletText;
+    [SerializeField]
+    private Text bulletText = null;
 
     //HPスライダー格納
-    public Slider hpSlider;
+    [SerializeField]
+    private Slider hpSlider = null;
 
     //DeathPanel
-    public GameObject deathPanel;
+    [SerializeField]
+    private GameObject deathPanel = null;
     //Deathテキスト
-    public Text deathText;
+    [SerializeField]
+    private Text deathText = null;
+    
+    [SerializeField]
+    private GameObject scoreBoard = null;
 
-    public GameObject scoreBoard;
-
-    public PlayerInformation info;
+    public PlayerInformation info = null;
 
     //終了パネル
-    public GameObject endPanel;
+    [SerializeField]
+    private GameObject endPanel = null;
 
     //リロードテキスト
-    public GameObject reloadText;
+    [SerializeField]
+    private GameObject reloadText = null;
+    
+    //Player1のText
+    [SerializeField]
+    private Text player1NameText = null;
+    //Player1の取得ラウンド数
+    [SerializeField]
+    private Text player1RoundText = null;
+    
+    //Player2のText
+    [SerializeField]
+    private Text player2NameText = null;
+    //Player2の取得ラウンド数
+    [SerializeField]
+    private Text player2RoundText = null;
+    
+    //Timer
+    [SerializeField] 
+    private Text timerText = null;
+    public Text TimerText => timerText;
+    
+    //CountDownText
+    [SerializeField] 
+    private Text countDownText = null;
+    public Text CountDownText => countDownText;
+    
 
 
 
@@ -76,4 +108,31 @@ public class UIManager : MonoBehaviour
     {
         reloadText.SetActive(false);
     }
+
+    public void SetPlayerText(string player1Name, string player2Name)
+    {
+        player1NameText.text = player1Name;
+        player2NameText.text = player2Name;
+    }
+
+    public void SetPlayer1Text(string player1Name)
+    {
+        player1NameText.text = player1Name;
+    }
+
+    public void SetPlayer1Round(int player1Round)
+    {
+        player1RoundText.text = player1Round.ToString("0");
+    }
+
+    public void SetPlayer2Text(string player2Name)
+    {
+        player2NameText.text = player2Name;
+    }
+    
+    public void SetPlayer2Round(int player2Round)
+    {
+        player2RoundText.text = player2Round.ToString("0");
+    }
+    
 }

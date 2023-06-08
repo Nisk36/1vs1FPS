@@ -26,5 +26,4 @@ public class TitleUIView : MonoBehaviour
     {
         _explainPanel.SetActive(isActive);
     }
-
 }

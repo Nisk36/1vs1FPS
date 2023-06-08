@@ -3237,7 +3237,6 @@ MonoBehaviour:
   viewPoint: {fileID: 7029212209899132711}
   mouseSensitivity: 1
   fov: 60
-  moveSpeed: 5
   jumpForce: {x: 0, y: 5, z: 0}
   groundCheckPoint: {fileID: 7029212209383957664}
   groundLayers:

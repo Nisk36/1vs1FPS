@@ -68,7 +68,7 @@ public class PhotonManager : MonoBehaviourPunCallbacks
 
     private void Update()
     {
-        Debug.Log(PhotonNetwork.IsConnected);
+        //Debug.Log(PhotonNetwork.IsConnected);
     }
 
 
@@ -361,6 +361,11 @@ public class PhotonManager : MonoBehaviourPunCallbacks
     public void PlayGame()
     {
         PhotonNetwork.LoadLevel(playLevel);
+        // PlayerÇ™2êlÇ¢Ç»Ç¢Ç∆ì¸ÇÍÇ»Ç¢ÇÊÇ§Ç…
+        //if (PhotonNetwork.PlayerList.Length == 2)
+        //{
+        //    PhotonNetwork.LoadLevel(playLevel);
+        //}
     }
 
     //ëÄçÏê‡ñæ
