@@ -1,13 +1,18 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Photon.Pun;
 using UnityEngine.SceneManagement;
 using Photon.Realtime;
 using ExitGames.Client.Photon;
+using UnityEngine.Assertions;
+using UnityEngine.PlayerLoop;
 
 //リアルタイムAPIのイベントコールバック。サーバーからのイベントと、OpRaiseEventを介してクライアントから送信されたイベントをカバーします。
 //カスタムイベントを受信することができるようになる
+//ゲームのシーケンス進行を担当
 public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 {
     //イベントについて記載があるドキュメント
@@ -29,30 +34,55 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     /// </summary>
     public enum GameState
     {
+        Waiting,
         Playing,
+        RoundEnding,
         Ending
     }
-
     public GameState state;//状態を格納
-
-    UIManager uiManager;
 
     private List<PlayerInformation> playerInfoList = new List<PlayerInformation>();
 
-    //クリアまでのキル数
-    public int TargetNumber = 5;
-
     //クリアパネルを表示している時間
     public float waitAfterEnding = 5.0f;
+    
+    //現在のラウンド数
+    private int roundNumber;
+    //ラウンドスタート待ちの秒数
+    [SerializeField]
+    private float startWaitSeconds = 3.0f;
+    //ラウンド終了のときの秒数
+    [SerializeField]
+    private float endWaitSeconds = 3.0f;
+    //WaitForSecondsキャッシュ用変数
+    private WaitForSeconds startWait;
+    private WaitForSeconds endWait;
 
+    private PlayerInfo gameWinner;
+    private PlayerInfo roundWinner;
+    
+    //playerPrefab
+    private GameObject playerObj;
+    private PlayerController player;
 
+    
+    //スポーン管理用Manager
+    [SerializeField] 
+    private SpawnManager spawnManager = null;
+    //ui管理用Manager
+    [SerializeField]
+    private UIManager uiManager = null;
+    
+    //Timer
+    [SerializeField]
+    private Timer timer;
 
     private void Awake()
     {
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
+
+        spawnManager = GameObject.FindGameObjectWithTag("SpawnManager").GetComponent<SpawnManager>();
     }
-
-
 
     private void Start()
     {
@@ -62,26 +92,115 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
             //タイトルに戻る
             SceneManager.LoadScene(0);
         }
-        else//繋がっている場合
+        else //繋がっている場合
         {
+            //スポーン
+            Assert.IsNotNull(spawnManager);
+            Assert.IsNotNull(timer);
+            Assert.IsNotNull(uiManager);
             //マスターにユーザー情報を発信する
             NewPlayerGet(PhotonNetwork.NickName);
-
+            //WaitSecondsはキャッシュして使う
+            startWait = new WaitForSeconds(startWaitSeconds);
+            endWait = new WaitForSeconds(endWaitSeconds);
+            //ゲームループスタート
+            //StartCoroutine(GameLoop());
             //状態をゲーム中に設定する
-            state = GameState.Playing;
+            state = GameState.Waiting;
+            //タイマー初期化
+            timer.Initilize(uiManager.TimerText);
+            //スポーン
+            spawnManager.Initilize();
+            playerObj = spawnManager.SpawnPlayer();
+            player = playerObj.GetComponent<PlayerController>();
+            spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);
         }
+    }
+
+    private void FixedUpdate()
+    {
+        Assert.IsNotNull(uiManager);
+        //UIの名前セット
+        SetPlayerName();
     }
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Tab))
+        
+        //Debug.Log(state);
+        switch (state)
         {
-            //更新しつつスコアボードを開く
-            ShowScoreboard();
-        }
-        else if (Input.GetKeyUp(KeyCode.Tab))
-        {
-            uiManager.ChangeScoreUI();
+            case GameState.Waiting: // ラウンド開始前
+                if (timer != null)
+                {
+                    Debug.Log("Timer is not null");
+                    if (timer.UpdateCountDown(uiManager.CountDownText))
+                    {
+                        state = GameState.Playing;
+                        if (player != null)
+                        {
+                            player.WaittoPlay();   
+                        }
+                        //Debug.Log("GameState変更");
+                    }   
+                }
+                break;
+            case GameState.Playing:
+                // ゲームプレイ中
+                if (timer != null)
+                {
+                    timer.UpdateTimer(uiManager.TimerText);   
+                }
+
+                if (player != null)
+                {
+                    if (player.IsDead)
+                    {
+                        var idList = new List<int>();
+                        // PlayerListのActornumber格納
+                        for (int i = 0; i < playerList.Count; i++)
+                        {   
+                            idList.Add(playerList[i].actor);
+                        }
+                        // 対戦相手のActorId取得
+                        int enemyActor = -1;
+                        for (int i = 0; i < idList.Count; i++)
+                        {
+                            if (idList[i] != PhotonNetwork.LocalPlayer.ActorNumber)
+                            {
+                                enemyActor = idList[i];
+                            }
+                        }
+                        //スコア処理
+                        ScoreGet(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1);//自分死亡時のイベント呼び出し
+                        if (enemyActor != -1)
+                        {
+                            ScoreGet(enemyActor, 0, 1);   
+                        }
+                        state = GameState.RoundEnding;
+                    }
+
+                    if (timer.IsTimeUp)
+                    {
+                        state = GameState.RoundEnding;
+                    }
+                }
+                break;
+            case GameState.RoundEnding:
+                //タイマー初期化
+                if (timer != null)
+                {
+                    timer.Initilize(uiManager.TimerText);   
+                }
+                //リスポーン
+                if (spawnManager != null)
+                {
+                    spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);   
+                }
+                player.Initailize();
+                //state変更
+                state = GameState.Waiting;
+                break;
         }
     }
 
@@ -108,26 +227,26 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 case EventCodes.UpdateStat:
                     ScoreSet(data);//
                     break;
-
-
             }
         }
     }
 
-    public override void OnEnable()//コンポーネントがオンになると呼ばれる
+    /// <summary>
+    /// コンポーネントがオンになると呼ばれる
+    /// </summary>
+    public override void OnEnable()
     {
         //実装されているコールバック・インターフェースのコールバック用オブジェクトを登録します。
         PhotonNetwork.AddCallbackTarget(this);//追加する
     }
-
-
-    public override void OnDisable()//コンポーネントがオフになると呼ばれる
+    
+    /// <summary>
+    /// コンポーネントがオフになると呼ばれる
+    /// </summary>
+    public override void OnDisable()
     {
         PhotonNetwork.RemoveCallbackTarget(this);//削除する
     }
-
-
-
 
     /// <summary>
     ///  新規ユーザーがネットワーク経由でマスターに自分の情報を送る
@@ -135,7 +254,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     public void NewPlayerGet(string name)//イベントを発生させる関数
     {
         //objectは色々な型を入れることができる：
-        object[] info = new object[4];//データ格納配列を作成
+        object[] info = new object[5];//データ格納配列を作成
         info[0] = name;//名前
         info[1] = PhotonNetwork.LocalPlayer.ActorNumber;//ユーザー管理番号
         info[2] = 0;//キル
@@ -157,15 +276,14 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     /// </summary>
     public void NewPlayerSet(object[] data)//マスターが行う処理　イベント発生時に行う処理
     {
+        Debug.Log("NewPlayerSet");
         PlayerInfo player = new PlayerInfo((string)data[0], (int)data[1], (int)data[2], (int)data[3]);//ネットワークからプレイヤー情報を取得
 
         playerList.Add(player);//リストに追加
 
         ListPlayersGet();//マスターが取得したプレイヤー情報を他のプレイヤーに共有
     }
-
-
-
+    
     /// <summary>
     /// 取得したプレイヤー情報をルーム内の全プレイヤーに送信する
     /// </summary>
@@ -184,7 +302,6 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
             temp[2] = playerList[i].kills;
             temp[3] = playerList[i].deaths;
 
-
             info[i + 1] = temp;//プレイヤー情報を格納している配列に格納する。0にはゲームの状態が入っているため＋１する。
         }
 
@@ -196,18 +313,18 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
             new SendOptions { Reliability = true }//信頼性の設定：信頼できるのでプレイヤーに送信される
         );
     }
-
-
-
+    
     /// <summary>
-    /// ListPlayersSendで新しくプレイヤー情報が送られてきたので、リストに格納する
+    /// ListPlayersGetで新しくプレイヤー情報が送られてきたので、リストに格納する
     /// </summary>
+    /// <param name="data">data = {0 : ゲーム状態, 1 : </param>
     public void ListPlayersSet(object[] data)//イベントが発生したら呼ばれる関数　全プレイヤーで呼ばれる
     {
         playerList.Clear();//既に持っているプレイヤーのリストを初期化
 
         state = (GameState)data[0];//ゲーム状態を変数に格納
 
+        var alreadyAddedActor = new List<int>();
 
         for (int i = 1; i < data.Length; i++)//1にする 0はゲーム状態なので1から始める
         {
@@ -217,26 +334,33 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 (string)info[0],//名前
                 (int)info[1],//管理番号
                 (int)info[2],//キル
-                (int)info[3]);//デス
+                (int)info[3]//デス
+            );
 
+            bool isAlreadyAdded = false;
+            for (int j = 0; j < alreadyAddedActor.Count; j++)
+            {
+                if (player.actor == alreadyAddedActor[i])
+                {
+                    isAlreadyAdded = true;
+                }
+            }
 
-            playerList.Add(player);//リストに追加
-
+            if (!isAlreadyAdded)
+            {
+                playerList.Add(player);//リストに追加   
+            }
         }
         //ゲームの状態判定
         StateCheck();
-
     }
-
-
-
+    
     /// <summary>
     /// キル数やデス数を取得する関数(プレイヤー識別数、キルかデスを数値で判定、加算する数値)
     /// </summary>
     public void ScoreGet(int actor, int stat, int amount)
     {
         object[] package = new object[] { actor, stat, amount };
-
 
         //データを送るイベント
         PhotonNetwork.RaiseEvent((byte)EventCodes.UpdateStat,//発生させるイベント
@@ -272,8 +396,6 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 
                         break;
                 }
-
-
                 break;//処理はできたのでこれ以降for文を回さないためにブレイクする
             }
         }
@@ -297,7 +419,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         }
 
         playerInfoList.Clear();
-
+        
         //参加ユーザー分ループ
         foreach(PlayerInfo player in playerList)
         {
@@ -326,15 +448,38 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         foreach (PlayerInfo player in playerList)
         {
             //キル数判定
-            if (player.kills >= TargetNumber && TargetNumber > 0)
+            if (player.kills >= 3)
             {
                 clear = true;
                 break;
             }
         }
 
-        if (clear)
+        int maxkillCount1 = 0;
+        int maxkillCount2 = 0;
+
+        foreach (PlayerInfo player in playerList)
         {
+            //UI変更
+            if (player.actor == 1)
+            {
+                if (maxkillCount1 <= player.kills)
+                {
+                    maxkillCount1 = player.kills;
+                    uiManager.SetPlayer1Round(maxkillCount1);
+                }
+            }
+            else if (player.actor == 2)
+            {
+                if (maxkillCount2 <= player.kills)
+                {
+                    maxkillCount2 = player.kills;
+                    uiManager.SetPlayer2Round(maxkillCount2);
+                }
+            }
+        }
+
+        if (clear) {
             if(PhotonNetwork.IsMasterClient && state != GameState.Ending)
             {
                 //ゲームの状態を変更
@@ -343,6 +488,10 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 //ゲームプレイ状態を共有
                 ListPlayersGet();
             }
+        }
+        else
+        {
+            state = GameState.RoundEnding;
         }
     }
 
@@ -390,16 +539,34 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         base.OnLeftRoom();
         SceneManager.LoadScene(0);
     }
+    
+    public void SetPlayerName()
+    {
+        //Actorが1のPlayerをPlayer1, 2のPlayerをPlayer2とする.
+        foreach (PlayerInfo player in playerList)
+        {
+            if (player.actor == 1)
+            {
+                uiManager.SetPlayer1Text(player.name);
+            }
+            else if (player.actor == 2)
+            {
+                uiManager.SetPlayer2Text(player.name);
+            }
+        }
+    }
 }
 
 
 
 
-[System.Serializable]
+
+    [System.Serializable]
 public class PlayerInfo//プレイヤー情報を管理するクラス
 {
     public string name;//名前
     public int actor, kills, deaths;//番号、キル、デス
+    public PlayerController player;
 
     //情報を格納
     public PlayerInfo(string _name, int _actor, int _kills, int _death)

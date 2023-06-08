@@ -7,7 +7,7 @@ public class Room : MonoBehaviour
     public Text buttonText;
     private RoomInfo info;
 
-    public void RegisterRoomDetails(RoomInfo info)//ƒ‹[ƒ€î•ñŠi”[
+    public void RegisterRoomDetails(RoomInfo info)//ãƒ«ãƒ¼ãƒ æƒ…å ±æ ¼ç´
     {
         this.info = info;
 

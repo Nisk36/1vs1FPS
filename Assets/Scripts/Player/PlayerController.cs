@@ -14,7 +14,9 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     private Vector3 moveInput;
     private Vector3 moveDirection;
-    public float moveSpeed = 4.0f;
+    private float moveSpeed = 4.0f;
+    private const float defaultMoveSpeed = 4.0f;
+    private const float dashSpeed = 8.0f;
 
     public Vector3 jumpForce = new Vector3(0, 5, 0);
     public Transform groundCheckPoint;
@@ -35,43 +37,44 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public GameObject bulletImpact;
 
-    UIManager uiManager;
-
-    SpawnManager spawnManager;
+    private UIManager uiManager;
 
     //Animator
     public Animator animator;
 
-    //ƒvƒŒƒCƒ„[ƒ‚ƒfƒ‹‚ğŠi”[
+    //ãƒ—ãƒ¬ã‚¤ãƒ¤ãƒ¼ãƒ¢ãƒ‡ãƒ«ã‚’æ ¼ç´
     public GameObject[] playerModel;
 
-    //eƒzƒ‹ƒ_[(©•ª—p)
+    //éŠƒãƒ›ãƒ«ãƒ€ãƒ¼(è‡ªåˆ†ç”¨)
     public GunScript[] gunsHolder;
 
-    //eƒzƒ‹ƒ_[(‘¼l—p)
+    //éŠƒãƒ›ãƒ«ãƒ€ãƒ¼(ä»–äººç”¨)
     public GunScript[] otherGunsHolder;
 
-    //Å‘åHP
+    //æœ€å¤§HP
     public int maxHP = 100;
 
     //effect
     public GameObject hitEffect;
 
-    //Œ»İHP
+    //ç¾åœ¨HP
     [SerializeField]
     private int currentHP;
-
-    //GameManager
-    GameManager gameManager;
+    
+    //PlayerãŒãƒ©ã‚¦ãƒ³ãƒ‰é–‹å§‹å¾…æ©Ÿä¸­ã‹ã©ã†ã‹
+    private bool isWaiting;
+    public bool IsWaiting => isWaiting;
+    
+    //PlayerãŒæ­»ã‚“ã ã‹ã©ã†ã‹
+    private bool isDead;
+    public bool IsDead => isDead;
+    
+    
 
 
     private void Awake()
     {
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
-
-        spawnManager = GameObject.FindGameObjectWithTag("SpawnManager").GetComponent<SpawnManager>();
-
-        gameManager = GameObject.FindGameObjectWithTag("GameManager").GetComponent<GameManager>();
     }
 
 
@@ -80,9 +83,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
         Initailize();
 
         CursorLock();
-
-
-
     }
 
     public void Initailize()
@@ -93,21 +93,19 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
         uiManager.SetBulletText(ammoClip[gunIndex], ammunition[gunIndex]);
 
-        //transform.position = spawnManager.GetSpawnPoint().position;
-
-        //e‚ğˆµ‚¤ƒŠƒXƒg‚Ì‰Šú‰»
+        //éŠƒã‚’æ‰±ã†ãƒªã‚¹ãƒˆã®åˆæœŸåŒ–
         guns.Clear();
 
-        //ƒ‚ƒfƒ‹‚âe‚Ì•\¦Ø‘Ö
+        //ãƒ¢ãƒ‡ãƒ«ã‚„éŠƒã®è¡¨ç¤ºåˆ‡æ›¿
         if (photonView.IsMine)
         {
-            //3Dƒ‚ƒfƒ‹”ñ•\¦
+            //3Dãƒ¢ãƒ‡ãƒ«éè¡¨ç¤º
             foreach(var model in playerModel)
             {
                 model.SetActive(false);
             }
 
-            //•\¦‚·‚é•û‚Ìe‚ğİ’è
+            //è¡¨ç¤ºã™ã‚‹æ–¹ã®éŠƒã‚’è¨­å®š
             foreach(GunScript gun in gunsHolder)
             {
                 guns.Add(gun);
@@ -115,59 +113,60 @@ public class PlayerController : MonoBehaviourPunCallbacks
         }
         else
         {
-            //•\¦‚·‚é•û‚Ìe‚ğİ’è
+            //è¡¨ç¤ºã™ã‚‹æ–¹ã®éŠƒã‚’è¨­å®š
             foreach (GunScript gun in otherGunsHolder)
             {
                 guns.Add(gun);
             }
         }
-        //e‚ğ•\¦z
+        //éŠƒã‚’è¡¨ç¤ºz
         //SwitchGun();
 
         photonView.RPC("SetGun", RpcTarget.All, gunIndex);
 
-        //Œ»İHP‚ÉÅ‘åHP‘ã“ü
+        //ç¾åœ¨HPã«æœ€å¤§HPä»£å…¥
         currentHP = maxHP;
 
-        //HP‚ğƒXƒ‰ƒCƒ_[‚É•\¦
+        //HPã‚’ã‚¹ãƒ©ã‚¤ãƒ€ãƒ¼ã«è¡¨ç¤º
         uiManager.UpdateHP(maxHP, currentHP);
+        
+        //æœ€åˆã¯ãƒ©ã‚¦ãƒ³ãƒ‰å¾…æ©Ÿä¸­
+        isWaiting = true;
+        
+        //æœ€åˆã¯æ­»ã‚“ã§ãªã„
+        isDead = false;
     }
 
     private void Update()
     {
-        //©ƒLƒƒƒ‰‚¾‚¯‘€ì
+        //è‡ªã‚­ãƒ£ãƒ©ã ã‘æ“ä½œ
         if (!photonView.IsMine)
         {
             return;
         }
 
-        PlayerRotate();
-
-        PlayerMove();
-
-        if (IsOnGround())
+        if (!isWaiting)
         {
-            Run();
-
-            Jump();
+            PlayerRotate();
+            PlayerMove();
+            if (IsOnGround())
+            {
+                Run();
+                Jump();
+            }
+            CursorLock();
+            SwitchingGuns();
+            Aim();
+            Fire();
+            Reload();
+            AnimatorSet();
+            if(Input.GetMouseButtonUp(0) || ammoClip[1] <= 0)
+            {
+                photonView.RPC("SoundStop", RpcTarget.All);
+            }
         }
 
-        CursorLock();
-
-        SwitchingGuns();
-
-        Aim();
-
-        Fire();
-
-        Reload();
-
-        AnimatorSet();
-
-        if(Input.GetMouseButtonUp(0) || ammoClip[1] <= 0)
-        {
-            photonView.RPC("SoundStop", RpcTarget.All);
-        }
+        
     }
 
     public void FixedUpdate()
@@ -185,6 +184,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
     {
         if (!photonView.IsMine)
         {
+            return;
             return;
         }
 
@@ -234,9 +234,9 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Run()
     {
-        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed = 8.0f;
+        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed = dashSpeed;
 
-        else moveSpeed = 4.0f;
+        else moveSpeed = defaultMoveSpeed;
     }
 
     public void CursorLock()
@@ -259,7 +259,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
         if(Input.GetAxisRaw("Mouse ScrollWheel") > 0.1f)
         {
             uiManager.CloseReloadText();
-            Debug.Log("ƒXƒNƒ[ƒ‹up");
 
             gunIndex++;
 
@@ -271,7 +270,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
         else if(Input.GetAxisRaw("Mouse ScrollWheel") < -0.1f)
         {
             uiManager.CloseReloadText();
-            Debug.Log("ƒXƒNƒ[ƒ‹down");
 
             gunIndex--;
 
@@ -282,15 +280,14 @@ public class PlayerController : MonoBehaviourPunCallbacks
         }
         for (int i = 0; i < guns.Count; i++)
         {
-            if (Input.GetKeyDown((i + 1).ToString()))//ƒ‹[ƒv‚Ì”’l{‚P‚ğ‚µ‚Ä•¶š—ñ‚É•ÏŠ·B‚»‚ÌŒãA‰Ÿ‚³‚ê‚½‚©”»’è
+            if (Input.GetKeyDown((i + 1).ToString()))//ãƒ«ãƒ¼ãƒ—ã®æ•°å€¤ï¼‹ï¼‘ã‚’ã—ã¦æ–‡å­—åˆ—ã«å¤‰æ›ã€‚ãã®å¾Œã€æŠ¼ã•ã‚ŒãŸã‹åˆ¤å®š
             {
                 uiManager.CloseReloadText();
-                gunIndex = i;//e‚ğˆµ‚¤”’l‚ğİ’è
+                gunIndex = i;//éŠƒã‚’æ‰±ã†æ•°å€¤ã‚’è¨­å®š
 
-                //ÀÛ‚É•Ší‚ğØ‚è‘Ö‚¦‚éŠÖ”
+                //å®Ÿéš›ã«æ­¦å™¨ã‚’åˆ‡ã‚Šæ›¿ãˆã‚‹é–¢æ•°
                 //SwitchGun();
                 photonView.RPC("SetGun", RpcTarget.All, gunIndex);
-
             }
         }
     }
@@ -337,11 +334,11 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
         if(Physics.Raycast(ray, out RaycastHit hit))
         {
-            //“–‚½‚Á‚½ƒIƒuƒWƒFƒNƒg‚ÍAhit.collider.gameobject
+            //å½“ãŸã£ãŸã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã¯ã€hit.collider.gameobject
 
-            //player‚É“–‚½‚Á‚½‚çƒ_ƒ[ƒWˆ—
+            //playerã«å½“ãŸã£ãŸã‚‰ãƒ€ãƒ¡ãƒ¼ã‚¸å‡¦ç†
 
-            //‚»‚¤‚Å‚È‚¯‚ê‚ÎA’e­‚ğ¶¬
+            //ãã†ã§ãªã‘ã‚Œã°ã€å¼¾ç—•ã‚’ç”Ÿæˆ
             if(hit.collider.gameObject.tag == "Player")
             {
                 PhotonNetwork.Instantiate(hitEffect.name,hit.point,Quaternion.identity);
@@ -355,7 +352,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
             }
             else
             {
-                //’e­‚ğ“–‚½‚Á‚½êŠ‚É¶¬‚·‚é
+                //å¼¾ç—•ã‚’å½“ãŸã£ãŸå ´æ‰€ã«ç”Ÿæˆã™ã‚‹
                 GameObject bulletImpactObject = Instantiate(guns[gunIndex].bulletImpact,
                     hit.point + (hit.normal * .002f),
                     Quaternion.LookRotation(hit.normal, Vector3.up));
@@ -367,7 +364,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
         shotTimer = Time.time + guns[gunIndex].shootInterval;
 
         photonView.RPC("SoundGenerate", RpcTarget.All);
-
     }
 
     public void Reload()
@@ -388,7 +384,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void AnimatorSet()
     {
-        //walk”»’è
+        //walkåˆ¤å®š
         if (moveDirection != Vector3.zero)
         {
             animator.SetBool("walk", true);
@@ -398,7 +394,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
             animator.SetBool("walk", false);
         }
 
-        //run”»’è
+        //runåˆ¤å®š
         if (Input.GetKey(KeyCode.LeftShift))
         {
             animator.SetBool("run", true);
@@ -409,8 +405,8 @@ public class PlayerController : MonoBehaviourPunCallbacks
         }
     }
 
-    //ƒŠƒ‚[ƒgŒÄ‚Ño‚µ‰Â”\‚ÈeØ‚è‘Ö‚¦ŠÖ”
-    [PunRPC]//‘¼‚Ìƒ†[ƒU[‚©‚ç‚àŒÄ‚Ño‚¹‚é‚æ‚¤‚É‚È‚é
+    //ãƒªãƒ¢ãƒ¼ãƒˆå‘¼ã³å‡ºã—å¯èƒ½ãªéŠƒåˆ‡ã‚Šæ›¿ãˆé–¢æ•°
+    [PunRPC]//ä»–ã®ãƒ¦ãƒ¼ã‚¶ãƒ¼ã‹ã‚‰ã‚‚å‘¼ã³å‡ºã›ã‚‹ã‚ˆã†ã«ãªã‚‹
     public void SetGun(int gunNo)
     {
         if(gunNo < guns.Count)
@@ -421,54 +417,48 @@ public class PlayerController : MonoBehaviourPunCallbacks
         }
     }
 
-    //”í’eŠÖ”
+    //è¢«å¼¾é–¢æ•°
     [PunRPC]
     public void Hit(int damage, string name, int actor)
     {
-        //HP‚ğŒ¸‚ç‚·ŠÖ”
+        //HPã‚’æ¸›ã‚‰ã™é–¢æ•°
         ReceiveDamage(name, damage, actor);
     }
 
-    //HP‚ğŒ¸‚ç‚·ŠÖ”
+    //HPã‚’æ¸›ã‚‰ã™é–¢æ•°
     public void ReceiveDamage(string name, int damage, int actor)
     {
         if (photonView.IsMine)
         {
-            //HP‚ğŒ¸‚ç‚·
+            //HPã‚’æ¸›ã‚‰ã™
             currentHP -= damage;
 
-            //0ˆÈ‰º‚É‚È‚Á‚½‚©”»’è‚ğ‚·‚é
+            //0ä»¥ä¸‹ã«ãªã£ãŸã‹åˆ¤å®šã‚’ã™ã‚‹
             if(currentHP <= 0)
             {
-                //€–SŠÖ”
-                Death(name,actor);
+                //æ­»äº¡é–¢æ•°
+                Death();
             }
 
             uiManager.UpdateHP(maxHP, currentHP);
         }
     }
 
-    public void Death(string name,int actor)
+    public void Death()
     {
         currentHP = 0;
 
-        uiManager.UpdateDeathUI(name);
-
-        spawnManager.Die();
-
-        gameManager.ScoreGet(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1);//©•ª€–S‚ÌƒCƒxƒ“ƒgŒÄ‚Ño‚µ
-
-        gameManager.ScoreGet(actor, 0, 1);
+        isDead = true;
     }
 
     public override void OnDisable()
     {
-        //ƒ}ƒEƒX•\¦
+        //ãƒã‚¦ã‚¹è¡¨ç¤º
         isCursorAppear = true;
         Cursor.lockState = CursorLockMode.None;
     }
 
-    //‰¹‚ğ–Â‚ç‚·ŠÖ”
+    //éŸ³ã‚’é³´ã‚‰ã™é–¢æ•°
     [PunRPC]
     public void SoundGenerate()
     {
@@ -482,10 +472,15 @@ public class PlayerController : MonoBehaviourPunCallbacks
         }
     }
 
-    //‰¹‚ğ~‚ß‚éŠÖ”
+    //éŸ³ã‚’æ­¢ã‚ã‚‹é–¢æ•°
     [PunRPC]
     public void SoundStop()
     {
         guns[1].LoopOFF_ARGun();
+    }
+
+    public void WaittoPlay()
+    {
+        isWaiting = false;
     }
 }

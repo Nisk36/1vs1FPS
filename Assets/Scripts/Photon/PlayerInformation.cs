@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 public class PlayerInformation : MonoBehaviour
 {
-    public Text playerNameText, kilesText, deathText;//–¼‘O‚ÆƒLƒ‹ƒfƒX”‚ğ•\¦‚·‚éƒeƒLƒXƒg
+    public Text playerNameText, kilesText, deathText;//åå‰ã¨ã‚­ãƒ«ãƒ‡ã‚¹æ•°ã‚’è¡¨ç¤ºã™ã‚‹ãƒ†ã‚­ã‚¹ãƒˆ
 
     public void SetPlayerDetailes(string name, int kill, int death)
     {

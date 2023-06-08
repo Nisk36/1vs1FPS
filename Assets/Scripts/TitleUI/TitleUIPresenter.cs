@@ -1,22 +1,20 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Assertions;
 
 public class TitleUIPresenter : MonoBehaviour
 {
     [SerializeField]
-    private TitleUIView _view = null;
+    private TitleUIView view = null;
 
     private void Awake()
     {
-        if (_view == null)
-        {
-            Debug.LogError("Viewがnullです");
-        }
+        Assert.IsNotNull(view);
 
         // ボタンイベント登録
-        _view.QuitGameButton.onClick.AddListener(() => OnClickQuitGameButton());
-        _view.ShowOperateButton.onClick.AddListener(() => OnClickExplainButton());
+        view.QuitGameButton.onClick.AddListener(() => OnClickQuitGameButton());
+        view.ShowOperateButton.onClick.AddListener(() => OnClickExplainButton());
     }
 
     /// <summary>
@@ -25,6 +23,11 @@ public class TitleUIPresenter : MonoBehaviour
     public void OnClickQuitGameButton()
     {
         // ここにゲーム終了コードを書く
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;//ゲームプレイ終了
+#else
+        Application.Quit();//ゲームプレイ終了
+#endif
     }
 
     /// <summary>
@@ -32,9 +35,6 @@ public class TitleUIPresenter : MonoBehaviour
     /// </summary>
     public void OnClickExplainButton()
     {
-        _view.SetActiveExplainPanel(true);
+        view.SetActiveExplainPanel(true);
     }
-
-
-
 }
