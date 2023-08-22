@@ -70,8 +70,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public bool IsDead => isDead;
     
     
-
-
     private void Awake()
     {
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
@@ -224,7 +222,8 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public bool IsOnGround()
     {
-        return Physics.Raycast(groundCheckPoint.position, Vector3.down, 0.20f, groundLayers);
+        const float maxdistance = 1.0f;
+        return Physics.Raycast(groundCheckPoint.position, Vector3.down, 0.20f, groundLayers);//ここがうまく動いていない？
     }
 
     public void Jump()
