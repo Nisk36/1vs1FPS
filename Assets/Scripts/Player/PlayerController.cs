@@ -40,13 +40,23 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public int[] ammoClip;
     public int[] maxAmmoClip;
 
-    public GameObject bulletImpact;
-
     private UIManager uiManager;
-
+    
+    //AudioSource
+    [SerializeField] 
+    private AudioSource audioSource;
     //Animator
-    public Animator animator;
-
+    [SerializeField]
+    private Animator animator;
+    
+    //SkinedMeshRenderer
+    [SerializeField]
+    private SkinnedMeshRenderer skinnedMeshRenderer = null;
+    
+    //Collider
+    [SerializeField]
+    private Collider playerCollider = null;
+    
     //プレイヤーモデルを格納
     public GameObject[] playerModel;
 
@@ -55,6 +65,10 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     //銃ホルダー(他人用)
     public GunScript[] otherGunsHolder;
+    
+    //他人用ホルダー(GameObject)
+    [SerializeField] 
+    private GameObject weaponHolder2;
 
     //最大HP
     public int maxHP = 100;
@@ -68,13 +82,13 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     //保存する位置情報数
     [SerializeField] 
-    private int maxRecallData = 5;
+    private int maxRecallData = 10;
     //保存する時間間隔
     [SerializeField] 
-    private float secondsBetweenData = 1.0f;
+    private float secondsBetweenData = 0.5f; //maxRecallData*secondsBetweenData秒前に戻る
     // 間隔
     [SerializeField] 
-    private float recallDuration = 1.25f;
+    private float recallDuration = 1.93f;
     private bool canCollectRecallData = true;
     private float currentDataTimer = 0f;
 
@@ -88,6 +102,11 @@ public class PlayerController : MonoBehaviourPunCallbacks
     [SerializeField] private List<RecallData> recallData = new List<RecallData>();
     //recallできるかどうか(1ラウンド1回想定のためbool)
     private bool canRecall = false;
+
+    //Recall時のSE
+    [SerializeField] 
+    private AudioClip recallSEClip;
+    
     //Playerのステートマシン
     public enum PlayerState
     {
@@ -219,7 +238,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
     {
         if (!photonView.IsMine)
         {
-            return;
             return;
         }
 
@@ -538,7 +556,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
     {
         playerState = PlayerState.Recall;
         canCollectRecallData = false;
-        
+        photonView.RPC("StartRecallRPC", RpcTarget.Others);
         //ADSしているならReset
         ResetAim();
 
@@ -546,6 +564,9 @@ public class PlayerController : MonoBehaviourPunCallbacks
         Vector3 currentDataPlayerStartPos = transform.position;
         Quaternion currentDataPlayerStartRot = transform.rotation;
         Quaternion currentDataCamaraStartRot = playerCam.transform.rotation;
+        
+        //SE鳴らす
+        audioSource.PlayOneShot(recallSEClip);
 
         while (recallData.Count > 0)
         {
@@ -575,6 +596,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
         
         playerState = PlayerState.Play;
         canCollectRecallData = true;
+        photonView.RPC("EndRecallRPC", RpcTarget.Others);
     }
     private void StoreRecallData()
     {
@@ -602,5 +624,29 @@ public class PlayerController : MonoBehaviourPunCallbacks
             rot = transform.rotation,
             camRot = playerCam.transform.rotation
         };
+    }
+    
+    //リコール始まったとき
+    [PunRPC]
+    private void StartRecallRPC()
+    {
+        //モデルを非表示
+        skinnedMeshRenderer.enabled = false;
+        //当たり判定も無効
+        playerCollider.enabled = false;
+        //銃も非表示
+        weaponHolder2.SetActive(false);
+    }
+    
+    //リコール終わったとき
+    [PunRPC]
+    private void EndRecallRPC()
+    {
+        //モデルを表示
+        skinnedMeshRenderer.enabled = true;
+        //当たり判定も有効
+        playerCollider.enabled = true;
+        //銃も非表示
+        weaponHolder2.SetActive(true);
     }
 }
