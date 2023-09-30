@@ -55,9 +55,19 @@ public class UIManager : MonoBehaviour
     private Text countDownText = null;
     public Text CountDownText => countDownText;
     
-
-
-
+    //Gun Image
+    [SerializeField] 
+    private Image[] gunImageList;
+    
+    //ReloadingText
+    [SerializeField]
+    private GameObject[] reloadingTexts = null;
+    
+    //Recall Image
+    [SerializeField] 
+    private Image recallImage = null;
+    
+    
     public void SetBulletText(int ammoClip,int ammunition)
     {
         bulletText.text = ammoClip + "/" + ammunition;
@@ -134,5 +144,23 @@ public class UIManager : MonoBehaviour
     {
         player2RoundText.text = player2Round.ToString("0");
     }
-    
+
+    public void ApplyGunImageAlphaValue(int gunIndex)
+    {
+        if (gunImageList.Length != 2) return;
+        gunImageList[gunIndex].color = new Color(0.0f, 0.0f, 0.0f,1.0f);
+        gunImageList[1 - gunIndex].color = new Color(0.0f, 0.0f, 0.0f,0.3f);
+    }
+
+    public void SetActiveReloadingText(int reloadGunIndex, bool flag)
+    {
+        reloadingTexts[reloadGunIndex].SetActive(flag);
+    }
+
+    public void ApplyRecallImageAlphaValue(bool canUse)
+    {
+        if (canUse) recallImage.color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+        else recallImage.color = new Color(1.0f, 1.0f, 1.0f, 0.3f);
+    }
+
 }

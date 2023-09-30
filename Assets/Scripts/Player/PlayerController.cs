@@ -1,7 +1,13 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design.Serialization;
+using System.Numerics;
 using UnityEngine;
 using Photon.Pun;
+using TMPro.EditorUtilities;
+using Quaternion = UnityEngine.Quaternion;
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
 
 public class PlayerController : MonoBehaviourPunCallbacks
 {
@@ -9,7 +15,9 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public float mouseSensitivity = 1.0f;
     private Vector2 mouseInput;
     private float verticalMouseInput;
+    //
     private Camera playerCam;
+    private Camera gunCam;//銃描画カメラ
     public float fov = 60f;
 
     private Vector3 moveInput;
@@ -18,7 +26,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
     private const float defaultMoveSpeed = 4.0f;
     private const float dashSpeed = 8.0f;
 
-    public Vector3 jumpForce = new Vector3(0, 5, 0);
+    public Vector3 jumpForce = new Vector3(0, 3, 0);
     public Transform groundCheckPoint;
     public LayerMask groundLayers;
     Rigidbody rb;
@@ -60,16 +68,44 @@ public class PlayerController : MonoBehaviourPunCallbacks
     //現在HP
     [SerializeField]
     private int currentHP;
-    
-    //Playerがラウンド開始待機中かどうか
-    private bool isWaiting;
-    public bool IsWaiting => isWaiting;
-    
-    //Playerが死んだかどうか
-    private bool isDead;
-    public bool IsDead => isDead;
-    
-    
+
+    //保存する位置情報数
+    [SerializeField] 
+    private int maxRecallData = 5;
+    //保存する時間間隔
+    [SerializeField] 
+    private float secondsBetweenData = 1.0f;
+    // 間隔
+    [SerializeField] 
+    private float recallDuration = 1.25f;
+    private bool canCollectRecallData = true;
+    private float currentDataTimer = 0f;
+
+    [System.Serializable]
+    private class RecallData
+    {
+        public Vector3 pos;
+        public Quaternion rot;
+        public Quaternion camRot;
+    }
+    [SerializeField] private List<RecallData> recallData = new List<RecallData>();
+    //recallできるかどうか(1ラウンド1回想定のためbool)
+    private bool canRecall = false;
+    //Playerのステートマシン
+    public enum PlayerState
+    {
+        Wait,
+        Play,
+        Recall,
+        Dash,
+        ADS,
+        Dead,
+    }
+
+    private PlayerState playerState = PlayerState.Wait;
+    public PlayerState _PlayerState => playerState;
+
+
     private void Awake()
     {
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
@@ -127,12 +163,12 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
         //HPをスライダーに表示
         uiManager.UpdateHP(maxHP, currentHP);
-        
-        //最初はラウンド待機中
-        isWaiting = true;
-        
-        //最初は死んでない
-        isDead = false;
+        //リコール用データ集める
+        canCollectRecallData = true;
+        //recall可能にする
+        canRecall = true;
+        //recall可能表示UI
+        uiManager.ApplyRecallImageAlphaValue(canRecall);
     }
 
     private void Update()
@@ -143,28 +179,32 @@ public class PlayerController : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (!isWaiting)
+        if (playerState == PlayerState.Wait) return;
+        StoreRecallData();
+        for (int i = 0; i < recallData.Count - 1; i++)
         {
-            PlayerRotate();
-            PlayerMove();
-            if (IsOnGround())
-            {
-                Run();
-                Jump();
-            }
-            CursorLock();
-            SwitchingGuns();
-            Aim();
-            Fire();
-            Reload();
-            AnimatorSet();
-            if(Input.GetMouseButtonUp(0) || ammoClip[1] <= 0)
-            {
-                photonView.RPC("SoundStop", RpcTarget.All);
-            }
+            Debug.DrawLine(recallData[i].pos, recallData[i + 1].pos);
         }
 
-        
+        RecallInput();
+        AnimatorSet();
+        if (playerState == PlayerState.Recall) return;
+        PlayerRotate();
+        PlayerMove();
+        if (IsOnGround())
+        {
+            Run();//ADS中に走れないように   
+            Jump();
+        }
+        CursorLock();
+        SwitchingGuns();
+        if (playerState != PlayerState.Dash)
+        {
+            Aim();//Dash中にAimできなくする
+        }
+        Fire();
+        Reload();
+        Debug.Log(playerState);
     }
 
     public void FixedUpdate()
@@ -204,8 +244,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
         viewPoint.rotation = Quaternion.Euler(-verticalMouseInput,
             viewPoint.transform.rotation.eulerAngles.y,
             viewPoint.transform.rotation.eulerAngles.z);
-
-
     }
 
 
@@ -222,8 +260,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public bool IsOnGround()
     {
-        const float maxdistance = 1.0f;
-        return Physics.Raycast(groundCheckPoint.position, Vector3.down, 0.20f, groundLayers);//ここがうまく動いていない？
+        return Physics.Raycast(groundCheckPoint.position, Vector3.down, 0.30f, groundLayers);//ここがうまく動いていない？
     }
 
     public void Jump()
@@ -233,9 +270,18 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Run()
     {
-        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed = dashSpeed;
+        if (Input.GetKey(KeyCode.LeftShift))
+        {
+            if(playerState == PlayerState.ADS) ResetAim();
+            playerState = PlayerState.Dash;
+            moveSpeed = dashSpeed;
+        }
 
-        else moveSpeed = defaultMoveSpeed;
+        else
+        {
+            playerState = PlayerState.Play;
+            moveSpeed = defaultMoveSpeed;
+        }
     }
 
     public void CursorLock()
@@ -289,6 +335,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 photonView.RPC("SetGun", RpcTarget.All, gunIndex);
             }
         }
+        uiManager.ApplyGunImageAlphaValue(gunIndex);
     }
 
     public void SwitchGun()
@@ -300,22 +347,28 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
         guns[gunIndex].gameObject.SetActive(true);
     }
-
     public void Aim()
     {
         if (Input.GetMouseButton(1))
         {
+            playerState = PlayerState.ADS;
             playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, guns[gunIndex].adsZoom, guns[gunIndex].adsSpeed * Time.deltaTime);
         }
         else
         {
+            playerState = PlayerState.Play;
             playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, fov, guns[gunIndex].adsSpeed * Time.deltaTime);
         }
     }
 
+    private void ResetAim()
+    {
+        playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, fov, guns[gunIndex].adsSpeed * Time.deltaTime);
+    }
+
     public void Fire()
     {
-        if (Input.GetMouseButton(0) && ammoClip[gunIndex] > 0 && Time.time > shotTimer)
+        if (Input.GetMouseButton(0) && ammoClip[gunIndex] > 0 && Time.time > shotTimer && !guns[gunIndex].isReloading)
         {
             FiringBullet();
         }
@@ -334,15 +387,11 @@ public class PlayerController : MonoBehaviourPunCallbacks
         if(Physics.Raycast(ray, out RaycastHit hit))
         {
             //当たったオブジェクトは、hit.collider.gameobject
-
             //playerに当たったらダメージ処理
-
             //そうでなければ、弾痕を生成
             if(hit.collider.gameObject.tag == "Player")
             {
                 PhotonNetwork.Instantiate(hitEffect.name,hit.point,Quaternion.identity);
-
-
                 hit.collider.gameObject.GetPhotonView().RPC("Hit",
                     RpcTarget.All,
                     guns[gunIndex].shootDamage,
@@ -367,18 +416,28 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Reload()
     {
-        if (Input.GetKeyDown(KeyCode.R))
+        if (Input.GetKeyDown(KeyCode.R) && !guns[gunIndex].isReloading)
         {
             uiManager.CloseReloadText();
-            int amountNeed = maxAmmoClip[gunIndex] - ammoClip[gunIndex];
-            int amountAvailable = amountNeed <= ammunition[gunIndex] ? amountNeed : ammunition[gunIndex];
-
-            if(amountAvailable != 0 && ammunition[gunIndex] != 0)
+            int reloadGunIndex = gunIndex;
+            int amountNeed = maxAmmoClip[reloadGunIndex] - ammoClip[reloadGunIndex];//今のマガジンの必要な段数
+            int amountAvailable = amountNeed <= ammunition[reloadGunIndex] ? amountNeed : ammunition[reloadGunIndex];//
+            if (amountAvailable != 0 && ammunition[reloadGunIndex] != 0)
             {
-                ammunition[gunIndex] -= amountAvailable;
-                ammoClip[gunIndex] += amountAvailable;
+                uiManager.SetActiveReloadingText(reloadGunIndex, true);
+                guns[reloadGunIndex].isReloading = true;
+                StartCoroutine(ReplenishmentGunAmmo(reloadGunIndex, amountNeed, amountAvailable));
             }
         }
+    }
+
+    private IEnumerator ReplenishmentGunAmmo(int reloadGunIndex, int amountNeed, int amountAvailable)
+    {
+        yield return new WaitForSeconds(guns[reloadGunIndex].reloadTime);
+        ammunition[reloadGunIndex] -= amountAvailable;
+        ammoClip[reloadGunIndex] += amountAvailable;
+        uiManager.SetActiveReloadingText(reloadGunIndex, false);
+        guns[reloadGunIndex].isReloading = false;
     }
 
     public void AnimatorSet()
@@ -446,8 +505,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public void Death()
     {
         currentHP = 0;
-
-        isDead = true;
+        playerState = PlayerState.Dead;
     }
 
     public override void OnDisable()
@@ -461,25 +519,91 @@ public class PlayerController : MonoBehaviourPunCallbacks
     [PunRPC]
     public void SoundGenerate()
     {
-        if(gunIndex == 1)
-        {
-            guns[gunIndex].LoopOnARGun();
-        }
-        else
-        {
-            guns[gunIndex].SoundGunShot();
-        }
-    }
-
-    //音を止める関数
-    [PunRPC]
-    public void SoundStop()
-    {
-        guns[1].LoopOFF_ARGun();
+        guns[gunIndex].SoundGunShot();
     }
 
     public void WaittoPlay()
     {
-        isWaiting = false;
+        playerState = PlayerState.Play;
+    }
+    
+    private void RecallInput()
+    {
+        if (Input.GetKeyDown(KeyCode.E) && canRecall)
+        {
+            canRecall = false;
+            uiManager.ApplyRecallImageAlphaValue(canRecall);
+            StartCoroutine(Recall());
+        }
+    }
+    
+    private IEnumerator Recall()
+    {
+        playerState = PlayerState.Recall;
+        canCollectRecallData = false;
+        
+        //ADSしているならReset
+        ResetAim();
+
+        float secondsForEachData = recallDuration / recallData.Count;
+        Vector3 currentDataPlayerStartPos = transform.position;
+        Quaternion currentDataPlayerStartRot = transform.rotation;
+        Quaternion currentDataCamaraStartRot = playerCam.transform.rotation;
+
+        while (recallData.Count > 0)
+        {
+            float t = 0f;
+            while (t < secondsForEachData)
+            {
+                transform.position = Vector3.Lerp(currentDataPlayerStartPos,
+                    recallData[recallData.Count - 1].pos,
+                    t / secondsForEachData);
+                transform.rotation = Quaternion.Lerp(currentDataPlayerStartRot,
+                    recallData[recallData.Count - 1].rot,
+                    t / secondsForEachData);
+                playerCam.transform.rotation = Quaternion.Lerp(currentDataCamaraStartRot,
+                    recallData[recallData.Count - 1].camRot,
+                    t / secondsForEachData);
+                t += Time.deltaTime;
+
+                yield return null;
+            }
+
+            currentDataPlayerStartPos = recallData[recallData.Count - 1].pos;
+            currentDataPlayerStartRot = recallData[recallData.Count - 1].rot;
+            currentDataCamaraStartRot = recallData[recallData.Count - 1].camRot;
+            
+            recallData.RemoveAt(recallData.Count - 1);
+        }
+        
+        playerState = PlayerState.Play;
+        canCollectRecallData = true;
+    }
+    private void StoreRecallData()
+    {
+        currentDataTimer += Time.deltaTime;
+
+        if (canCollectRecallData)
+        {
+            if (currentDataTimer >= secondsBetweenData)
+            {
+                if (recallData.Count >= maxRecallData)
+                {
+                    recallData.RemoveAt(0);
+                }
+                recallData.Add(GetRecallData());
+                currentDataTimer = 0;
+            }
+        }
+    }
+
+    private RecallData GetRecallData()
+    {
+        return new RecallData()
+        {
+            pos = transform.position,
+            rot = transform.rotation,
+            camRot = playerCam.transform.rotation
+        };
     }
 }

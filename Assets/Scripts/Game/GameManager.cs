@@ -154,7 +154,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 
                 if (player != null)
                 {
-                    if (player.IsDead)
+                    if (player._PlayerState == PlayerController.PlayerState.Dead)
                     {
                         var idList = new List<int>();
                         // PlayerList‚ÌActornumberŠi”[

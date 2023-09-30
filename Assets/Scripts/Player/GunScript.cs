@@ -8,6 +8,8 @@ public class GunScript : MonoBehaviour
     public int shootDamage;
     public float adsSpeed;
     public float adsZoom;
+    public float reloadTime;
+    public bool isReloading = false;
 
     public GameObject bulletImpact;
 
