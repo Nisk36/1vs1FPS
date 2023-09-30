@@ -67,6 +67,18 @@ public class UIManager : MonoBehaviour
     [SerializeField] 
     private Image recallImage = null;
     
+    //RoundNumber
+    [SerializeField] 
+    private Text roundNumberText = null;
+    
+    //RoundëOÇÃê‡ñæï∂(ì¶Ç∞ÇƒÇ‡èüÇøver)
+    [SerializeField]
+    private GameObject beforeRoundExplainCanEscape = null;
+    
+    //RoundëOÇÃê‡ñæï∂(ì|Ç≥Ç»Ç¢Ç∆É_ÉÅver)
+    [SerializeField] 
+    private GameObject beforeRoundExplainCannotEscape = null;
+    
     
     public void SetBulletText(int ammoClip,int ammunition)
     {
@@ -116,6 +128,7 @@ public class UIManager : MonoBehaviour
 
     public void CloseReloadText()
     {
+        Debug.Log("CloseReloadText");
         reloadText.SetActive(false);
     }
 
@@ -163,4 +176,18 @@ public class UIManager : MonoBehaviour
         else recallImage.color = new Color(1.0f, 1.0f, 1.0f, 0.3f);
     }
 
+    public void SetRoundNumber(int roundNumber)
+    {
+        roundNumberText.text = roundNumber.ToString();
+    }
+    
+    public void SetActiveExplainCanEscape(bool isActive)
+    {
+        beforeRoundExplainCanEscape.SetActive(isActive);
+    }
+
+    public void SetActiveExplainCannotEscape(bool isActive)
+    {
+        beforeRoundExplainCannotEscape.SetActive(isActive);
+    }
 }

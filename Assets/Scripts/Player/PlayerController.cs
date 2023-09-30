@@ -125,6 +125,8 @@ public class PlayerController : MonoBehaviourPunCallbacks
     private void Awake()
     {
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
+        playerCam = Camera.main;
+        rb = GetComponent<Rigidbody>();
     }
 
 
@@ -137,15 +139,14 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Initailize()
     {
-        playerCam = Camera.main;
-
-        rb = GetComponent<Rigidbody>();
-
-        uiManager.SetBulletText(ammoClip[gunIndex], ammunition[gunIndex]);
-
+        //viewPoint関連初期化
+        mouseInput = Vector2.zero;
+        verticalMouseInput = 0.0f;
+        viewPoint.rotation = Quaternion.identity;
+        
+        //銃関連初期化
         //銃を扱うリストの初期化
         guns.Clear();
-
         //モデルや銃の表示切替
         if (photonView.IsMine)
         {
@@ -169,22 +170,31 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 guns.Add(gun);
             }
         }
-        //銃を表示z
-        //SwitchGun();
-
+        //ハンドガンに初期設定
+        gunIndex = 0;
         photonView.RPC("SetGun", RpcTarget.All, gunIndex);
-
-        //現在HPに最大HP代入
+        for (int i = 0; i < maxAmmunition.Length; i++)
+        {
+            ammunition[i] = maxAmmunition[i];
+            ammoClip[i] = maxAmmoClip[i];
+        }
+        uiManager.SetBulletText(ammoClip[gunIndex], ammunition[gunIndex]);
+        
+        //HP関連初期化
+        //現在HPに最大HP代入 da
         currentHP = maxHP;
-
         //HPをスライダーに表示
         uiManager.UpdateHP(maxHP, currentHP);
+        
+        //Skill関連初期化
         //リコール用データ集める
         canCollectRecallData = true;
         //recall可能にする
         canRecall = true;
         //recall可能表示UI
         uiManager.ApplyRecallImageAlphaValue(canRecall);
+        
+        playerState = PlayerState.Wait;
     }
 
     private void Update()
@@ -220,7 +230,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
         }
         Fire();
         Reload();
-        Debug.Log(playerState);
+        //Debug.Log(playerState);
     }
 
     public void FixedUpdate()
@@ -439,6 +449,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
             int amountAvailable = amountNeed <= ammunition[reloadGunIndex] ? amountNeed : ammunition[reloadGunIndex];//
             if (amountAvailable != 0 && ammunition[reloadGunIndex] != 0)
             {
+                uiManager.CloseReloadText();
                 uiManager.SetActiveReloadingText(reloadGunIndex, true);
                 guns[reloadGunIndex].isReloading = true;
                 StartCoroutine(ReplenishmentGunAmmo(reloadGunIndex, amountNeed, amountAvailable));
@@ -556,7 +567,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
     {
         playerState = PlayerState.Recall;
         canCollectRecallData = false;
-        photonView.RPC("StartRecallRPC", RpcTarget.Others);
+        photonView.RPC("StartRecallRPC", RpcTarget.All);
         //ADSしているならReset
         ResetAim();
 
@@ -596,7 +607,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
         
         playerState = PlayerState.Play;
         canCollectRecallData = true;
-        photonView.RPC("EndRecallRPC", RpcTarget.Others);
+        photonView.RPC("EndRecallRPC", RpcTarget.All);
     }
     private void StoreRecallData()
     {
