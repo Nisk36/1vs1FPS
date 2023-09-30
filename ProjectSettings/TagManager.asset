@@ -8,6 +8,7 @@ TagManager:
   - SpawnManager
   - GameManager
   - GunCamera
+  - BulletImpactParent
   layers:
   - Default
   - TransparentFX

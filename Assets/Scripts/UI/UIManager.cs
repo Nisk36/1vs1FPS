@@ -128,7 +128,6 @@ public class UIManager : MonoBehaviour
 
     public void CloseReloadText()
     {
-        Debug.Log("CloseReloadText");
         reloadText.SetActive(false);
     }
 

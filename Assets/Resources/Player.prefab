@@ -2822,7 +2822,6 @@ MonoBehaviour:
   groundLayers:
     serializedVersion: 2
     m_Bits: 64
-  guns: []
   ammunition: 2000000008000000
   maxAmmunition: 2000000008000000
   ammoClip: 0800000004000000

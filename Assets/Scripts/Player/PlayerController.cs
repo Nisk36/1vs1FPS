@@ -15,30 +15,37 @@ public class PlayerController : MonoBehaviourPunCallbacks
     //
     private Camera playerCam;
     private Camera gunCam;//銃描画カメラ
-    public float fov = 60f;
+    [SerializeField]
+    private float fov = 60f;
 
     private Vector3 moveInput;
     private Vector3 moveDirection;
     private float moveSpeed = 4.0f;
     private const float defaultMoveSpeed = 4.0f;
     private const float dashSpeed = 8.0f;
-
-    public Vector3 jumpForce = new Vector3(0, 3, 0);
-    public Transform groundCheckPoint;
-    public LayerMask groundLayers;
+    
+    [SerializeField]
+    private Vector3 jumpForce = new Vector3(0, 3, 0);
+    [SerializeField]
+    private Transform groundCheckPoint;
+    [SerializeField]
+    private LayerMask groundLayers;
     Rigidbody rb;
 
     private bool isCursorAppear = false;
 
-    public List<GunScript> guns = new List<GunScript>();
+    private List<GunScript> guns = new List<GunScript>();
     private int gunIndex = 0;
 
     private float shotTimer;
-
-    public int[] ammunition;
-    public int[] maxAmmunition;
-    public int[] ammoClip;
-    public int[] maxAmmoClip;
+    [SerializeField]
+    private int[] ammunition;
+    [SerializeField]
+    private int[] maxAmmunition;
+    [SerializeField]
+    private int[] ammoClip;
+    [SerializeField]
+    private int[] maxAmmoClip;
 
     private UIManager uiManager;
     
@@ -58,23 +65,31 @@ public class PlayerController : MonoBehaviourPunCallbacks
     private Collider playerCollider = null;
     
     //プレイヤーモデルを格納
-    public GameObject[] playerModel;
+    [SerializeField]
+    private GameObject[] playerModel;
+    
+    //弾痕生成親オブジェクトTransform
+    private Transform bulletImpactParent;
 
     //銃ホルダー(自分用)
-    public GunScript[] gunsHolder;
+    [SerializeField]
+    private GunScript[] gunsHolder;
 
     //銃ホルダー(他人用)
-    public GunScript[] otherGunsHolder;
+    [SerializeField]
+    private GunScript[] otherGunsHolder;
     
     //他人用ホルダー(GameObject)
     [SerializeField] 
     private GameObject weaponHolder2;
 
     //最大HP
-    public int maxHP = 100;
+    [SerializeField]
+    private int maxHP = 100;
 
     //effect
-    public GameObject hitEffect;
+    [SerializeField]
+    private GameObject hitEffect;
 
     //現在HP
     [SerializeField]
@@ -127,6 +142,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
         playerCam = Camera.main;
         rb = GetComponent<Rigidbody>();
+        bulletImpactParent = GameObject.FindGameObjectWithTag("BulletImpactParent").GetComponent<Transform>();
     }
 
 
@@ -397,7 +413,8 @@ public class PlayerController : MonoBehaviourPunCallbacks
         {
             FiringBullet();
         }
-        if(ammoClip[gunIndex] <= 0)
+
+        if (Input.GetMouseButton(0) && ammoClip[gunIndex] <= 0 && !guns[gunIndex].isReloading)
         {
             uiManager.ShowReloadText();
         }
@@ -428,7 +445,8 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 //弾痕を当たった場所に生成する
                 GameObject bulletImpactObject = Instantiate(guns[gunIndex].bulletImpact,
                     hit.point + (hit.normal * .002f),
-                    Quaternion.LookRotation(hit.normal, Vector3.up));
+                    Quaternion.LookRotation(hit.normal, Vector3.up),
+                    bulletImpactParent);
 
                 Destroy(bulletImpactObject, 10f);
             }

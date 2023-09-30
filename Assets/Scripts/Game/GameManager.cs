@@ -69,6 +69,9 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     //uiä«óùópManager
     [SerializeField]
     private UIManager uiManager = null;
+
+    [SerializeField] 
+    private Transform bulletImpactParent = null;
     
     //Timer
     [SerializeField]
@@ -308,6 +311,14 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 {
                     spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);   
                 }
+                foreach (Transform bulletImpact in bulletImpactParent)
+                {
+                    if (bulletImpact.gameObject != null)
+                    {
+                        Destroy(bulletImpact.gameObject);
+                    }
+                }
+                
                 player.Initailize();
                 //stateïœçX
                 state = GameState.Waiting;
