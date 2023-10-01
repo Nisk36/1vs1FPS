@@ -128,7 +128,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback, IPunOwne
 
     private void Update()
     {
-        //‚¢‚Â‚Å‚àƒQ[ƒ€I—¹‚Å‚«‚é‚æ‚¤‚É
+        //‚¢‚Â‚Å‚àƒQ[ƒ€I—¹‚Å‚«‚é‚æ‚¤‚Él
         ExitGame();
         //“r’†”²‚¯‚µ‚½‚ç‰ğU
         CheckRoomNum();

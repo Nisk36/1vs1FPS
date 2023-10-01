@@ -360,12 +360,12 @@ public class PhotonManager : MonoBehaviourPunCallbacks
     //遷移関数
     public void PlayGame()
     {
-        PhotonNetwork.LoadLevel(playLevel);
-        // Playerが2人いないと入れないように
-        //if (PhotonNetwork.PlayerList.Length == 2)
-        //{
-        //    PhotonNetwork.LoadLevel(playLevel);
-        //}
+        //PhotonNetwork.LoadLevel(playLevel);
+        //Playerが2人いないと入れないように
+        if (PhotonNetwork.PlayerList.Length == 2)
+        {
+            PhotonNetwork.LoadLevel(playLevel);
+        }
     }
 
     //操作説明
@@ -377,5 +377,15 @@ public class PhotonManager : MonoBehaviourPunCallbacks
     public void CloseExplainPanel()
     {
         explainPanel.SetActive(false);
+    }
+
+    public void QuitGame()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;//ゲームプレイ終了
+#else
+        Application.Quit();//ゲームプレイ終了
+#endif
+
     }
 }
