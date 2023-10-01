@@ -1,6 +1,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 
+//シングルトンにした方がいいかも？
 public class UIManager : MonoBehaviour
 {
     //ammoText
@@ -188,5 +189,12 @@ public class UIManager : MonoBehaviour
     public void SetActiveExplainCannotEscape(bool isActive)
     {
         beforeRoundExplainCannotEscape.SetActive(isActive);
+    }
+
+    public void CloseInGameExplainTexts()
+    {
+        CloseReloadText();
+        SetActiveReloadingText(0,false);
+        SetActiveReloadingText(1, false);
     }
 }

@@ -311,6 +311,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 {
                     spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);   
                 }
+                //Mapに残ってる弾痕消す処理
                 foreach (Transform bulletImpact in bulletImpactParent)
                 {
                     if (bulletImpact.gameObject != null)
@@ -318,7 +319,9 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                         Destroy(bulletImpact.gameObject);
                     }
                 }
-                
+                //表示されてるInGame中の説明UIを非表示
+                uiManager.CloseInGameExplainTexts();
+                //player初期化
                 player.Initailize();
                 //state変更
                 state = GameState.Waiting;
