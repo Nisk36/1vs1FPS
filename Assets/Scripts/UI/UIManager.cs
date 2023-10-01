@@ -80,6 +80,14 @@ public class UIManager : MonoBehaviour
     [SerializeField] 
     private GameObject beforeRoundExplainCannotEscape = null;
     
+    //WinnerNameText
+    [SerializeField] 
+    private Text winnerNameText = null;
+    
+    //DisconnectPanel
+    [SerializeField] 
+    private GameObject disconnectPanel = null;
+    
     
     public void SetBulletText(int ammoClip,int ammunition)
     {
@@ -196,5 +204,15 @@ public class UIManager : MonoBehaviour
         CloseReloadText();
         SetActiveReloadingText(0,false);
         SetActiveReloadingText(1, false);
+    }
+
+    public void SetWinnerNameText(string str)
+    {
+        winnerNameText.text = str;
+    }
+
+    public void SetActiveDisconnectPanel(bool isActive)
+    {
+        disconnectPanel.SetActive(isActive);
     }
 }

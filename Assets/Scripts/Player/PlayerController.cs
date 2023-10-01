@@ -155,11 +155,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Initailize()
     {
-        //viewPoint関連初期化
-        mouseInput = Vector2.zero;
-        verticalMouseInput = 0.0f;
-        viewPoint.rotation = Quaternion.identity;
-        
         //銃関連初期化
         //銃を扱うリストの初期化
         guns.Clear();
@@ -209,6 +204,14 @@ public class PlayerController : MonoBehaviourPunCallbacks
         canRecall = true;
         //recall可能表示UI
         uiManager.ApplyRecallImageAlphaValue(canRecall);
+        //recallDataを空にする
+        recallData.Clear();
+        
+        //viewPoint関連初期化
+        mouseInput = Vector2.zero;
+        verticalMouseInput = 0.0f;
+        viewPoint.rotation = transform.rotation;
+        ResetAim();//ADSを解除
         
         playerState = PlayerState.Wait;
     }

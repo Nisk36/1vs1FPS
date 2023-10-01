@@ -9,6 +9,7 @@ TagManager:
   - GameManager
   - GunCamera
   - BulletImpactParent
+  - HitEffect
   layers:
   - Default
   - TransparentFX

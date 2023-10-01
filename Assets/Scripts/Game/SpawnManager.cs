@@ -24,21 +24,22 @@ public class SpawnManager : MonoBehaviour
         }
     }
     //ネットワークオブジェクトとしてプレイヤーを生成する
-    public GameObject SpawnPlayer()
+    public GameObject SpawnPlayer(bool isMasterClient)
     {
-        //ランダムにスポーンポイントを変数に格納
-        Transform spawnPoint = spawnPoints[Random.Range(0, spawnPoints.Length)];
+        // Masterなら0, そうでないなら1にスポーン
+        int spawnIndex = isMasterClient ? 0 : 1;
+        Transform spawnPoint = spawnPoints[spawnIndex];
         
         //NetworkObjectとしてplayerを生成
         player = PhotonNetwork.Instantiate(playerPrefab.name, spawnPoint.position, spawnPoint.rotation);
-        Debug.Log("SpawnPlayer");
 
         return player;
     }
 
-    public void Relocate(int actor, GameObject player)
+    public void Relocate(bool isMasterClient, GameObject player)
     {
-        player.transform.position = spawnPoints[actor - 1].position;
-        player.transform.rotation = spawnPoints[actor - 1].rotation;
+        int spawnIndex = isMasterClient ? 0 : 1;
+        player.transform.position = spawnPoints[spawnIndex].position;
+        player.transform.rotation = spawnPoints[spawnIndex].rotation;
     }
 }

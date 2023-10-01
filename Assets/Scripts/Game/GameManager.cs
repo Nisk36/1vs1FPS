@@ -12,7 +12,7 @@ using UnityEngine.Assertions;
 
 //リアルタイムAPIのイベントコールバック。サーバーからのイベントと、OpRaiseEventを介してクライアントから送信されたイベントをカバー
 //ゲームのシーケンス進行を担当
-public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
+public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback, IPunOwnershipCallbacks
 {
     public List<PlayerInfo> playerList = new List<PlayerInfo>();//プレイヤー情報を扱うクラスのリスト
     
@@ -109,9 +109,9 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
             timer.Initilize(uiManager.TimerText);
             //スポーン
             spawnManager.Initilize();
-            playerObj = spawnManager.SpawnPlayer();
+            playerObj = spawnManager.SpawnPlayer(PhotonNetwork.IsMasterClient);
             player = playerObj.GetComponent<PlayerController>();
-            spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);
+            spawnManager.Relocate(PhotonNetwork.IsMasterClient, playerObj);
             //変数初期化
             roundNumber = 1;
             decisionNum = UnityEngine.Random.value;
@@ -128,6 +128,10 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void Update()
     {
+        //いつでもゲーム終了できるように
+        ExitGame();
+        //途中抜けしたら解散
+        CheckRoomNum();
         //Debug.Log(state);
         switch (state)
         {
@@ -309,7 +313,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 //リスポーン
                 if (spawnManager != null && playerObj != null)
                 {
-                    spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);   
+                    spawnManager.Relocate(PhotonNetwork.IsMasterClient, playerObj);   
                 }
                 //Mapに残ってる弾痕消す処理
                 foreach (Transform bulletImpact in bulletImpactParent)
@@ -317,6 +321,15 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                     if (bulletImpact.gameObject != null)
                     {
                         Destroy(bulletImpact.gameObject);
+                    }
+                }
+                //Mapに残ってるHitEffect消す処理
+                if (PhotonNetwork.IsMasterClient)//マスター側が行う
+                {
+                    GameObject[] hitEffects = GameObject.FindGameObjectsWithTag("HitEffect");
+                    foreach (GameObject hitEffect in hitEffects)
+                    {
+                        hitEffect.GetComponent<PhotonView>().TransferOwnership(PhotonNetwork.LocalPlayer);
                     }
                 }
                 //表示されてるInGame中の説明UIを非表示
@@ -327,6 +340,22 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 state = GameState.Waiting;
                 break;
         }
+    }
+    
+    // IPunOwnershipCallbacks.OnOwnershipTransferedを実装
+    void IPunOwnershipCallbacks.OnOwnershipTransfered(PhotonView targetView, Player previousOwner) 
+    {
+        // ネットワークオブジェクトを削除
+        PhotonNetwork.Destroy(targetView.gameObject);
+    }
+
+    // 以下のメソッドも実装しないとエラーが出る
+    void IPunOwnershipCallbacks.OnOwnershipTransferFailed(PhotonView targetView, Player previousOwner)
+    {
+    }
+
+    void IPunOwnershipCallbacks.OnOwnershipRequest(PhotonView targetView, Player requestingPlayer) 
+    {
     }
 
 
@@ -611,7 +640,8 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         foreach (PlayerInfo player in playerList)
         {
             //UI変更
-            if (player.actor == 1)
+            //player1はLocalPlayer
+            if (player.actor == PhotonNetwork.LocalPlayer.ActorNumber)
             {
                 if (maxkillCount1 <= player.kills)
                 {
@@ -619,7 +649,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                     uiManager.SetPlayer1Round(maxkillCount1);
                 }
             }
-            else if (player.actor == 2)
+            else
             {
                 if (maxkillCount2 <= player.kills)
                 {
@@ -665,8 +695,15 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         //終了パネルを表示
         uiManager.OpenEndPanel();
 
-        //スコアパネルを表示
-        ShowScoreboard();
+        //勝者の名前を表示
+        foreach (PlayerInfo player in playerList)
+        {
+            if (player.kills >= 3)
+            {
+                uiManager.SetWinnerNameText(player.name);
+                break;
+            }
+        }
 
         //カーソルの表示
         Cursor.lockState = CursorLockMode.None;
@@ -690,19 +727,50 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         SceneManager.LoadScene(0);
     }
     
+    //ルームが1人だったら(相手が途中抜けしたら)自分も抜ける
+    private void CheckRoomNum()
+    {
+        if (PhotonNetwork.CurrentRoom.PlayerCount != 2)
+        {
+            //ネットワークオブジェクト削除
+            if (PhotonNetwork.IsMasterClient)
+            {
+                PhotonNetwork.DestroyAll();
+            }
+            //カーソルの表示
+            Cursor.lockState = CursorLockMode.None;
+            
+            //切断説明panelの表示
+            uiManager.SetActiveDisconnectPanel(true);
+            //終了後の処理
+            Invoke("ProcessingAfterCompletion", waitAfterEnding);
+        }
+    }
     public void SetPlayerName()
     {
-        //Actorが1のPlayerをPlayer1, 2のPlayerをPlayer2とする.
+        //LocalPlayerをPlayer1, 2のPlayerをPlayer2とする.
         foreach (PlayerInfo player in playerList)
         {
-            if (player.actor == 1)
+            if (player.actor == PhotonNetwork.LocalPlayer.ActorNumber)
             {
                 uiManager.SetPlayer1Text(player.name);
             }
-            else if (player.actor == 2)
+            else
             {
                 uiManager.SetPlayer2Text(player.name);
             }
+        }
+    }
+
+    public void ExitGame()
+    {
+        if (Input.GetKey(KeyCode.Escape))
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;//ゲームプレイ終了
+#else
+            Application.Quit();//ゲームプレイ終了
+#endif
         }
     }
 }
