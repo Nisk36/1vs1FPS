@@ -211,7 +211,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
         mouseInput = Vector2.zero;
         verticalMouseInput = 0.0f;
         viewPoint.rotation = transform.rotation;
-        ResetAim();//ADSを解除
+        ForceResetAim();
         
         playerState = PlayerState.Wait;
     }
@@ -408,6 +408,11 @@ public class PlayerController : MonoBehaviourPunCallbacks
     private void ResetAim()
     {
         playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, fov, guns[gunIndex].adsSpeed * Time.deltaTime);
+    }
+
+    private void ForceResetAim()
+    {
+        playerCam.fieldOfView = fov;
     }
 
     public void Fire()
