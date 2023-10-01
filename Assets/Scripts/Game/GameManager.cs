@@ -1,32 +1,27 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using System.Security.Cryptography;
 using UnityEngine;
 using Photon.Pun;
 using UnityEngine.SceneManagement;
 using Photon.Realtime;
 using ExitGames.Client.Photon;
 using UnityEngine.Assertions;
-using UnityEngine.PlayerLoop;
 
-//リアルタイムAPIのイベントコールバック。サーバーからのイベントと、OpRaiseEventを介してクライアントから送信されたイベントをカバーします。
-//カスタムイベントを受信することができるようになる
+
+//リアルタイムAPIのイベントコールバック。サーバーからのイベントと、OpRaiseEventを介してクライアントから送信されたイベントをカバー
 //ゲームのシーケンス進行を担当
-public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
+public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback, IPunOwnershipCallbacks
 {
-    //イベントについて記載があるドキュメント
-    //https://doc.photonengine.com/ja-jp/pun/current/gameplay/rpcsandraiseevent#_thy2n6w3gsafi04
-
-
     public List<PlayerInfo> playerList = new List<PlayerInfo>();//プレイヤー情報を扱うクラスのリスト
-
-
+    
     public enum EventCodes : byte//自作イベント：byteは扱うデータ(0 ～ 255)
     {
         NewPlayer,//新しいプレイヤー情報をマスターに送る
         ListPlayers,//全員にプレイヤー情報を共有
         UpdateStat,//キルデス数の更新
+        ShareNum,//MasterのRoundNumやDicisionNumを共有
     }
 
     /// <summary>
@@ -64,14 +59,19 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     //playerPrefab
     private GameObject playerObj;
     private PlayerController player;
-
     
+    //勝敗分け用乱数 (0.5未満ならMasterが最初(roundNumberが奇数)逃げれば勝ち, 0.5以上なら負けスタート)
+    private float decisionNum = 0.0f;
+
     //スポーン管理用Manager
     [SerializeField] 
     private SpawnManager spawnManager = null;
     //ui管理用Manager
     [SerializeField]
     private UIManager uiManager = null;
+
+    [SerializeField] 
+    private Transform bulletImpactParent = null;
     
     //Timer
     [SerializeField]
@@ -103,17 +103,19 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
             //WaitSecondsはキャッシュして使う
             startWait = new WaitForSeconds(startWaitSeconds);
             endWait = new WaitForSeconds(endWaitSeconds);
-            //ゲームループスタート
-            //StartCoroutine(GameLoop());
-            //状態をゲーム中に設定する
+            //状態を待機中に設定する
             state = GameState.Waiting;
             //タイマー初期化
             timer.Initilize(uiManager.TimerText);
             //スポーン
             spawnManager.Initilize();
-            playerObj = spawnManager.SpawnPlayer();
+            playerObj = spawnManager.SpawnPlayer(PhotonNetwork.IsMasterClient);
             player = playerObj.GetComponent<PlayerController>();
-            spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);
+            spawnManager.Relocate(PhotonNetwork.IsMasterClient, playerObj);
+            //変数初期化
+            roundNumber = 1;
+            decisionNum = UnityEngine.Random.value;
+            Debug.Log(decisionNum);
         }
     }
 
@@ -126,23 +128,95 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 
     private void Update()
     {
-        
+        //いつでもゲーム終了できるように
+        ExitGame();
+        //途中抜けしたら解散
+        CheckRoomNum();
         //Debug.Log(state);
         switch (state)
         {
             case GameState.Waiting: // ラウンド開始前
-                if (timer != null)
+                if (timer == null) return;
+                //roundNumber更新
+                roundNumber = 1;
+                for (int i = 0; i < playerList.Count; i++)
                 {
-                    Debug.Log("Timer is not null");
-                    if (timer.UpdateCountDown(uiManager.CountDownText))
+                    roundNumber += playerList[i].kills;
+                }
+                //roundNumber表示
+                uiManager.SetRoundNumber(roundNumber);
+
+                //dicisionNum同期
+                ShareNum(decisionNum);
+                Debug.Log(decisionNum);
+                //プレイヤーのラウンド目標文表示
+                if (decisionNum <= 0.5f) //roundNumが奇数だったらMasterが勝利
+                {
+                    if (roundNumber % 2 == 1) //奇数の時
                     {
-                        state = GameState.Playing;
-                        if (player != null)
+                        if (PhotonNetwork.IsMasterClient)
                         {
-                            player.WaittoPlay();   
+                            uiManager.SetActiveExplainCanEscape(true);
+                            uiManager.SetActiveExplainCannotEscape(false);
                         }
-                        //Debug.Log("GameState変更");
-                    }   
+                        else
+                        {
+                            uiManager.SetActiveExplainCannotEscape(true);
+                            uiManager.SetActiveExplainCanEscape(false);
+                        }
+                    }
+                    else //roundNumが偶数の時
+                    {
+                        if (PhotonNetwork.IsMasterClient)
+                        {
+                            uiManager.SetActiveExplainCannotEscape(true);
+                            uiManager.SetActiveExplainCanEscape(false);
+                        }
+                        else
+                        {
+                            uiManager.SetActiveExplainCanEscape(true);
+                            uiManager.SetActiveExplainCannotEscape(false);
+                        }
+                    }
+                }
+                else//roundNumが偶数だったらMasterが勝利
+                {
+                    if (roundNumber % 2 == 1) //奇数の時
+                    {
+                        if (PhotonNetwork.IsMasterClient)
+                        {
+                            uiManager.SetActiveExplainCannotEscape(true);
+                            uiManager.SetActiveExplainCanEscape(false);
+                        }
+                        else
+                        {
+                            uiManager.SetActiveExplainCanEscape(true);
+                            uiManager.SetActiveExplainCannotEscape(false);
+                        }
+                    }
+                    else //roundNumが偶数の時
+                    {
+                        if (PhotonNetwork.IsMasterClient)
+                        {
+                            uiManager.SetActiveExplainCanEscape(true);
+                            uiManager.SetActiveExplainCannotEscape(false);
+                        }
+                        else
+                        {
+                            uiManager.SetActiveExplainCannotEscape(true);
+                            uiManager.SetActiveExplainCanEscape(false);
+                        }
+                    }
+                }
+                if (timer.UpdateCountDown(uiManager.CountDownText))
+                {
+                    state = GameState.Playing;
+                    if (player != null)
+                    {
+                        player.WaittoPlay();
+                        uiManager.SetActiveExplainCanEscape(false);
+                        uiManager.SetActiveExplainCannotEscape(false);
+                    }
                 }
                 break;
             case GameState.Playing:
@@ -154,8 +228,9 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 
                 if (player != null)
                 {
-                    if (player.IsDead)
+                    if (player._PlayerState == PlayerController.PlayerState.Dead)
                     {
+                        state = GameState.RoundEnding;
                         var idList = new List<int>();
                         // PlayerListのActornumber格納
                         for (int i = 0; i < playerList.Count; i++)
@@ -169,6 +244,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                             if (idList[i] != PhotonNetwork.LocalPlayer.ActorNumber)
                             {
                                 enemyActor = idList[i];
+                                Debug.Log(enemyActor);
                             }
                         }
                         //スコア処理
@@ -177,12 +253,54 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                         {
                             ScoreGet(enemyActor, 0, 1);   
                         }
-                        state = GameState.RoundEnding;
                     }
-
                     if (timer.IsTimeUp)
                     {
                         state = GameState.RoundEnding;
+                        var idList = new List<int>();
+                        // PlayerListのActornumber格納
+                        for (int i = 0; i < playerList.Count; i++)
+                        {   
+                            idList.Add(playerList[i].actor);
+                        }
+                        // 対戦相手のActorId取得
+                        int enemyActorId = -1;
+                        for (int i = 0; i < idList.Count; i++)
+                        {
+                            if (idList[i] != PhotonNetwork.LocalPlayer.ActorNumber)
+                            {
+                                enemyActorId = idList[i];
+                                Debug.Log(enemyActorId);
+                            }
+                        }
+                        //スコア処理(MasterClientにやらせる)
+                        if (!PhotonNetwork.IsMasterClient) return;
+                        if (decisionNum <= 0.5f)//roundNumが奇数だったらMasterが勝利
+                        {
+                            if (roundNumber % 2 == 1)//奇数の時
+                            {
+                                ScoreGet(enemyActorId, 1, 1); //相手死亡時のイベント呼び出し
+                                ScoreGet(PhotonNetwork.LocalPlayer.ActorNumber, 0, 1); //自分勝利時
+                            }
+                            else
+                            {
+                                ScoreGet(enemyActorId, 0, 1); //相手勝利時のイベント呼び出し
+                                ScoreGet(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1); //自分敗北時
+                            }
+                        }
+                        else//roundNumが偶数だったらMasterが勝利
+                        {
+                            if (roundNumber % 2 == 1)//奇数の時
+                            {
+                                ScoreGet(enemyActorId, 0, 1); //相手勝利時のイベント呼び出し
+                                ScoreGet(PhotonNetwork.LocalPlayer.ActorNumber, 1, 1); //自分敗北時
+                            }
+                            else
+                            {
+                                ScoreGet(enemyActorId, 1, 1); //相手死亡時のイベント呼び出し
+                                ScoreGet(PhotonNetwork.LocalPlayer.ActorNumber, 0, 1); //自分勝利時
+                            }
+                        }
                     }
                 }
                 break;
@@ -195,13 +313,49 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                 //リスポーン
                 if (spawnManager != null && playerObj != null)
                 {
-                    spawnManager.Relocate(PhotonNetwork.LocalPlayer.ActorNumber, playerObj);   
+                    spawnManager.Relocate(PhotonNetwork.IsMasterClient, playerObj);   
                 }
+                //Mapに残ってる弾痕消す処理
+                foreach (Transform bulletImpact in bulletImpactParent)
+                {
+                    if (bulletImpact.gameObject != null)
+                    {
+                        Destroy(bulletImpact.gameObject);
+                    }
+                }
+                //Mapに残ってるHitEffect消す処理
+                if (PhotonNetwork.IsMasterClient)//マスター側が行う
+                {
+                    GameObject[] hitEffects = GameObject.FindGameObjectsWithTag("HitEffect");
+                    foreach (GameObject hitEffect in hitEffects)
+                    {
+                        hitEffect.GetComponent<PhotonView>().TransferOwnership(PhotonNetwork.LocalPlayer);
+                    }
+                }
+                //表示されてるInGame中の説明UIを非表示
+                uiManager.CloseInGameExplainTexts();
+                //player初期化
                 player.Initailize();
                 //state変更
                 state = GameState.Waiting;
                 break;
         }
+    }
+    
+    // IPunOwnershipCallbacks.OnOwnershipTransferedを実装
+    void IPunOwnershipCallbacks.OnOwnershipTransfered(PhotonView targetView, Player previousOwner) 
+    {
+        // ネットワークオブジェクトを削除
+        PhotonNetwork.Destroy(targetView.gameObject);
+    }
+
+    // 以下のメソッドも実装しないとエラーが出る
+    void IPunOwnershipCallbacks.OnOwnershipTransferFailed(PhotonView targetView, Player previousOwner)
+    {
+    }
+
+    void IPunOwnershipCallbacks.OnOwnershipRequest(PhotonView targetView, Player requestingPlayer) 
+    {
     }
 
 
@@ -226,6 +380,9 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
 
                 case EventCodes.UpdateStat:
                     ScoreSet(data);//
+                    break;
+                case EventCodes.ShareNum:
+                    NumSet(data);
                     break;
             }
         }
@@ -253,8 +410,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     /// </summary>
     public void NewPlayerGet(string name)//イベントを発生させる関数
     {
-        //objectは色々な型を入れることができる：
-        object[] info = new object[5];//データ格納配列を作成
+        object[] info = new object[4];//データ格納配列を作成
         info[0] = name;//名前
         info[1] = PhotonNetwork.LocalPlayer.ActorNumber;//ユーザー管理番号
         info[2] = 0;//キル
@@ -371,6 +527,29 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
     }
 
     /// <summary>
+    /// マスターにdicisionNumを共有する関数
+    /// </summary>
+    public void ShareNum(float dicisionNum)
+    {
+        object[] package = new object[] { dicisionNum };
+
+        PhotonNetwork.RaiseEvent((byte)EventCodes.ShareNum,
+            package,
+            new RaiseEventOptions { Receivers = ReceiverGroup.All },
+            new SendOptions { Reliability = true }
+        );
+    }
+
+    /// <summary>
+    /// dicisionNumを取得する関数
+    /// </summary>
+    public void NumSet(object[] data)
+    {
+        float sendDicisionNum = (float)data[0];
+        decisionNum = sendDicisionNum;
+    }
+
+    /// <summary>
     /// 受け取ったデータからリストにキルデス情報を追加
     /// </summary>
     public void ScoreSet(object[] data)
@@ -461,7 +640,8 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         foreach (PlayerInfo player in playerList)
         {
             //UI変更
-            if (player.actor == 1)
+            //player1はLocalPlayer
+            if (player.actor == PhotonNetwork.LocalPlayer.ActorNumber)
             {
                 if (maxkillCount1 <= player.kills)
                 {
@@ -469,7 +649,7 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
                     uiManager.SetPlayer1Round(maxkillCount1);
                 }
             }
-            else if (player.actor == 2)
+            else
             {
                 if (maxkillCount2 <= player.kills)
                 {
@@ -515,8 +695,15 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         //終了パネルを表示
         uiManager.OpenEndPanel();
 
-        //スコアパネルを表示
-        ShowScoreboard();
+        //勝者の名前を表示
+        foreach (PlayerInfo player in playerList)
+        {
+            if (player.kills >= 3)
+            {
+                uiManager.SetWinnerNameText(player.name);
+                break;
+            }
+        }
 
         //カーソルの表示
         Cursor.lockState = CursorLockMode.None;
@@ -540,19 +727,50 @@ public class GameManager : MonoBehaviourPunCallbacks, IOnEventCallback
         SceneManager.LoadScene(0);
     }
     
+    //ルームが1人だったら(相手が途中抜けしたら)自分も抜ける
+    private void CheckRoomNum()
+    {
+        if (PhotonNetwork.CurrentRoom.PlayerCount != 2)
+        {
+            //ネットワークオブジェクト削除
+            if (PhotonNetwork.IsMasterClient)
+            {
+                PhotonNetwork.DestroyAll();
+            }
+            //カーソルの表示
+            Cursor.lockState = CursorLockMode.None;
+            
+            //切断説明panelの表示
+            uiManager.SetActiveDisconnectPanel(true);
+            //終了後の処理
+            Invoke("ProcessingAfterCompletion", waitAfterEnding);
+        }
+    }
     public void SetPlayerName()
     {
-        //Actorが1のPlayerをPlayer1, 2のPlayerをPlayer2とする.
+        //LocalPlayerをPlayer1, 2のPlayerをPlayer2とする.
         foreach (PlayerInfo player in playerList)
         {
-            if (player.actor == 1)
+            if (player.actor == PhotonNetwork.LocalPlayer.ActorNumber)
             {
                 uiManager.SetPlayer1Text(player.name);
             }
-            else if (player.actor == 2)
+            else
             {
                 uiManager.SetPlayer2Text(player.name);
             }
+        }
+    }
+
+    public void ExitGame()
+    {
+        if (Input.GetKey(KeyCode.Escape))
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;//ゲームプレイ終了
+#else
+            Application.Quit();//ゲームプレイ終了
+#endif
         }
     }
 }

@@ -2,6 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
+using Quaternion = UnityEngine.Quaternion;
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
 
 public class PlayerController : MonoBehaviourPunCallbacks
 {
@@ -9,72 +12,137 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public float mouseSensitivity = 1.0f;
     private Vector2 mouseInput;
     private float verticalMouseInput;
+    //
     private Camera playerCam;
-    public float fov = 60f;
+    private Camera gunCam;//銃描画カメラ
+    [SerializeField]
+    private float fov = 60f;
 
     private Vector3 moveInput;
     private Vector3 moveDirection;
     private float moveSpeed = 4.0f;
     private const float defaultMoveSpeed = 4.0f;
     private const float dashSpeed = 8.0f;
-
-    public Vector3 jumpForce = new Vector3(0, 5, 0);
-    public Transform groundCheckPoint;
-    public LayerMask groundLayers;
+    
+    [SerializeField]
+    private Vector3 jumpForce = new Vector3(0, 3, 0);
+    [SerializeField]
+    private Transform groundCheckPoint;
+    [SerializeField]
+    private LayerMask groundLayers;
     Rigidbody rb;
 
     private bool isCursorAppear = false;
 
-    public List<GunScript> guns = new List<GunScript>();
+    private List<GunScript> guns = new List<GunScript>();
     private int gunIndex = 0;
 
     private float shotTimer;
-
-    public int[] ammunition;
-    public int[] maxAmmunition;
-    public int[] ammoClip;
-    public int[] maxAmmoClip;
-
-    public GameObject bulletImpact;
+    [SerializeField]
+    private int[] ammunition;
+    [SerializeField]
+    private int[] maxAmmunition;
+    [SerializeField]
+    private int[] ammoClip;
+    [SerializeField]
+    private int[] maxAmmoClip;
 
     private UIManager uiManager;
-
+    
+    //AudioSource
+    [SerializeField] 
+    private AudioSource audioSource;
     //Animator
-    public Animator animator;
-
+    [SerializeField]
+    private Animator animator;
+    
+    //SkinedMeshRenderer
+    [SerializeField]
+    private SkinnedMeshRenderer skinnedMeshRenderer = null;
+    
+    //Collider
+    [SerializeField]
+    private Collider playerCollider = null;
+    
     //プレイヤーモデルを格納
-    public GameObject[] playerModel;
+    [SerializeField]
+    private GameObject[] playerModel;
+    
+    //弾痕生成親オブジェクトTransform
+    private Transform bulletImpactParent;
 
     //銃ホルダー(自分用)
-    public GunScript[] gunsHolder;
+    [SerializeField]
+    private GunScript[] gunsHolder;
 
     //銃ホルダー(他人用)
-    public GunScript[] otherGunsHolder;
+    [SerializeField]
+    private GunScript[] otherGunsHolder;
+    
+    //他人用ホルダー(GameObject)
+    [SerializeField] 
+    private GameObject weaponHolder2;
 
     //最大HP
-    public int maxHP = 100;
+    [SerializeField]
+    private int maxHP = 100;
 
     //effect
-    public GameObject hitEffect;
+    [SerializeField]
+    private GameObject hitEffect;
 
     //現在HP
     [SerializeField]
     private int currentHP;
+
+    //保存する位置情報数
+    [SerializeField] 
+    private int maxRecallData = 10;
+    //保存する時間間隔
+    [SerializeField] 
+    private float secondsBetweenData = 0.5f; //maxRecallData*secondsBetweenData秒前に戻る
+    // 間隔
+    [SerializeField] 
+    private float recallDuration = 1.93f;
+    private bool canCollectRecallData = true;
+    private float currentDataTimer = 0f;
+
+    [System.Serializable]
+    private class RecallData
+    {
+        public Vector3 pos;
+        public Quaternion rot;
+        public Quaternion camRot;
+    }
+    [SerializeField] private List<RecallData> recallData = new List<RecallData>();
+    //recallできるかどうか(1ラウンド1回想定のためbool)
+    private bool canRecall = false;
+
+    //Recall時のSE
+    [SerializeField] 
+    private AudioClip recallSEClip;
     
-    //Playerがラウンド開始待機中かどうか
-    private bool isWaiting;
-    public bool IsWaiting => isWaiting;
-    
-    //Playerが死んだかどうか
-    private bool isDead;
-    public bool IsDead => isDead;
-    
-    
+    //Playerのステートマシン
+    public enum PlayerState
+    {
+        Wait,
+        Play,
+        Recall,
+        Dash,
+        ADS,
+        Dead,
+    }
+
+    private PlayerState playerState = PlayerState.Wait;
+    public PlayerState _PlayerState => playerState;
 
 
     private void Awake()
     {
         uiManager = GameObject.FindGameObjectWithTag("UIManager").GetComponent<UIManager>();
+        playerCam = Camera.main;
+        rb = GetComponent<Rigidbody>();
+        bulletImpactParent = GameObject.FindGameObjectWithTag("BulletImpactParent").GetComponent<Transform>();
     }
 
 
@@ -87,15 +155,9 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Initailize()
     {
-        playerCam = Camera.main;
-
-        rb = GetComponent<Rigidbody>();
-
-        uiManager.SetBulletText(ammoClip[gunIndex], ammunition[gunIndex]);
-
+        //銃関連初期化
         //銃を扱うリストの初期化
         guns.Clear();
-
         //モデルや銃の表示切替
         if (photonView.IsMine)
         {
@@ -119,22 +181,39 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 guns.Add(gun);
             }
         }
-        //銃を表示z
-        //SwitchGun();
-
+        //ハンドガンに初期設定
+        gunIndex = 0;
         photonView.RPC("SetGun", RpcTarget.All, gunIndex);
-
-        //現在HPに最大HP代入
+        for (int i = 0; i < maxAmmunition.Length; i++)
+        {
+            ammunition[i] = maxAmmunition[i];
+            ammoClip[i] = maxAmmoClip[i];
+        }
+        uiManager.SetBulletText(ammoClip[gunIndex], ammunition[gunIndex]);
+        
+        //HP関連初期化
+        //現在HPに最大HP代入 da
         currentHP = maxHP;
-
         //HPをスライダーに表示
         uiManager.UpdateHP(maxHP, currentHP);
         
-        //最初はラウンド待機中
-        isWaiting = true;
+        //Skill関連初期化
+        //リコール用データ集める
+        canCollectRecallData = true;
+        //recall可能にする
+        canRecall = true;
+        //recall可能表示UI
+        uiManager.ApplyRecallImageAlphaValue(canRecall);
+        //recallDataを空にする
+        recallData.Clear();
         
-        //最初は死んでない
-        isDead = false;
+        //viewPoint関連初期化
+        mouseInput = Vector2.zero;
+        verticalMouseInput = 0.0f;
+        viewPoint.rotation = transform.rotation;
+        ForceResetAim();
+        
+        playerState = PlayerState.Wait;
     }
 
     private void Update()
@@ -145,28 +224,32 @@ public class PlayerController : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (!isWaiting)
+        if (playerState == PlayerState.Wait) return;
+        StoreRecallData();
+        for (int i = 0; i < recallData.Count - 1; i++)
         {
-            PlayerRotate();
-            PlayerMove();
-            if (IsOnGround())
-            {
-                Run();
-                Jump();
-            }
-            CursorLock();
-            SwitchingGuns();
-            Aim();
-            Fire();
-            Reload();
-            AnimatorSet();
-            if(Input.GetMouseButtonUp(0) || ammoClip[1] <= 0)
-            {
-                photonView.RPC("SoundStop", RpcTarget.All);
-            }
+            Debug.DrawLine(recallData[i].pos, recallData[i + 1].pos);
         }
 
-        
+        RecallInput();
+        AnimatorSet();
+        if (playerState == PlayerState.Recall) return;
+        PlayerRotate();
+        PlayerMove();
+        if (IsOnGround())
+        {
+            Run();//ADS中に走れないように   
+            Jump();
+        }
+        CursorLock();
+        SwitchingGuns();
+        if (playerState != PlayerState.Dash)
+        {
+            Aim();//Dash中にAimできなくする
+        }
+        Fire();
+        Reload();
+        //Debug.Log(playerState);
     }
 
     public void FixedUpdate()
@@ -184,7 +267,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
     {
         if (!photonView.IsMine)
         {
-            return;
             return;
         }
 
@@ -206,8 +288,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
         viewPoint.rotation = Quaternion.Euler(-verticalMouseInput,
             viewPoint.transform.rotation.eulerAngles.y,
             viewPoint.transform.rotation.eulerAngles.z);
-
-
     }
 
 
@@ -224,7 +304,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public bool IsOnGround()
     {
-        return Physics.Raycast(groundCheckPoint.position, Vector3.down, 0.20f, groundLayers);
+        return Physics.Raycast(groundCheckPoint.position, Vector3.down, 0.30f, groundLayers);//ここがうまく動いていない？
     }
 
     public void Jump()
@@ -234,9 +314,18 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Run()
     {
-        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed = dashSpeed;
+        if (Input.GetKey(KeyCode.LeftShift))
+        {
+            if(playerState == PlayerState.ADS) ResetAim();
+            playerState = PlayerState.Dash;
+            moveSpeed = dashSpeed;
+        }
 
-        else moveSpeed = defaultMoveSpeed;
+        else
+        {
+            playerState = PlayerState.Play;
+            moveSpeed = defaultMoveSpeed;
+        }
     }
 
     public void CursorLock()
@@ -290,6 +379,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 photonView.RPC("SetGun", RpcTarget.All, gunIndex);
             }
         }
+        uiManager.ApplyGunImageAlphaValue(gunIndex);
     }
 
     public void SwitchGun()
@@ -301,26 +391,38 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
         guns[gunIndex].gameObject.SetActive(true);
     }
-
     public void Aim()
     {
         if (Input.GetMouseButton(1))
         {
+            playerState = PlayerState.ADS;
             playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, guns[gunIndex].adsZoom, guns[gunIndex].adsSpeed * Time.deltaTime);
         }
         else
         {
+            playerState = PlayerState.Play;
             playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, fov, guns[gunIndex].adsSpeed * Time.deltaTime);
         }
     }
 
+    private void ResetAim()
+    {
+        playerCam.fieldOfView = Mathf.Lerp(playerCam.fieldOfView, fov, guns[gunIndex].adsSpeed * Time.deltaTime);
+    }
+
+    private void ForceResetAim()
+    {
+        playerCam.fieldOfView = fov;
+    }
+
     public void Fire()
     {
-        if (Input.GetMouseButton(0) && ammoClip[gunIndex] > 0 && Time.time > shotTimer)
+        if (Input.GetMouseButton(0) && ammoClip[gunIndex] > 0 && Time.time > shotTimer && !guns[gunIndex].isReloading)
         {
             FiringBullet();
         }
-        if(ammoClip[gunIndex] <= 0)
+
+        if (Input.GetMouseButton(0) && ammoClip[gunIndex] <= 0 && !guns[gunIndex].isReloading)
         {
             uiManager.ShowReloadText();
         }
@@ -335,15 +437,11 @@ public class PlayerController : MonoBehaviourPunCallbacks
         if(Physics.Raycast(ray, out RaycastHit hit))
         {
             //当たったオブジェクトは、hit.collider.gameobject
-
             //playerに当たったらダメージ処理
-
             //そうでなければ、弾痕を生成
             if(hit.collider.gameObject.tag == "Player")
             {
                 PhotonNetwork.Instantiate(hitEffect.name,hit.point,Quaternion.identity);
-
-
                 hit.collider.gameObject.GetPhotonView().RPC("Hit",
                     RpcTarget.All,
                     guns[gunIndex].shootDamage,
@@ -355,7 +453,8 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 //弾痕を当たった場所に生成する
                 GameObject bulletImpactObject = Instantiate(guns[gunIndex].bulletImpact,
                     hit.point + (hit.normal * .002f),
-                    Quaternion.LookRotation(hit.normal, Vector3.up));
+                    Quaternion.LookRotation(hit.normal, Vector3.up),
+                    bulletImpactParent);
 
                 Destroy(bulletImpactObject, 10f);
             }
@@ -368,18 +467,29 @@ public class PlayerController : MonoBehaviourPunCallbacks
 
     public void Reload()
     {
-        if (Input.GetKeyDown(KeyCode.R))
+        if (Input.GetKeyDown(KeyCode.R) && !guns[gunIndex].isReloading)
         {
             uiManager.CloseReloadText();
-            int amountNeed = maxAmmoClip[gunIndex] - ammoClip[gunIndex];
-            int amountAvailable = amountNeed <= ammunition[gunIndex] ? amountNeed : ammunition[gunIndex];
-
-            if(amountAvailable != 0 && ammunition[gunIndex] != 0)
+            int reloadGunIndex = gunIndex;
+            int amountNeed = maxAmmoClip[reloadGunIndex] - ammoClip[reloadGunIndex];//今のマガジンの必要な段数
+            int amountAvailable = amountNeed <= ammunition[reloadGunIndex] ? amountNeed : ammunition[reloadGunIndex];//
+            if (amountAvailable != 0 && ammunition[reloadGunIndex] != 0)
             {
-                ammunition[gunIndex] -= amountAvailable;
-                ammoClip[gunIndex] += amountAvailable;
+                uiManager.CloseReloadText();
+                uiManager.SetActiveReloadingText(reloadGunIndex, true);
+                guns[reloadGunIndex].isReloading = true;
+                StartCoroutine(ReplenishmentGunAmmo(reloadGunIndex, amountNeed, amountAvailable));
             }
         }
+    }
+
+    private IEnumerator ReplenishmentGunAmmo(int reloadGunIndex, int amountNeed, int amountAvailable)
+    {
+        yield return new WaitForSeconds(guns[reloadGunIndex].reloadTime);
+        ammunition[reloadGunIndex] -= amountAvailable;
+        ammoClip[reloadGunIndex] += amountAvailable;
+        uiManager.SetActiveReloadingText(reloadGunIndex, false);
+        guns[reloadGunIndex].isReloading = false;
     }
 
     public void AnimatorSet()
@@ -447,8 +557,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public void Death()
     {
         currentHP = 0;
-
-        isDead = true;
+        playerState = PlayerState.Dead;
     }
 
     public override void OnDisable()
@@ -462,25 +571,119 @@ public class PlayerController : MonoBehaviourPunCallbacks
     [PunRPC]
     public void SoundGenerate()
     {
-        if(gunIndex == 1)
-        {
-            guns[gunIndex].LoopOnARGun();
-        }
-        else
-        {
-            guns[gunIndex].SoundGunShot();
-        }
-    }
-
-    //音を止める関数
-    [PunRPC]
-    public void SoundStop()
-    {
-        guns[1].LoopOFF_ARGun();
+        guns[gunIndex].SoundGunShot();
     }
 
     public void WaittoPlay()
     {
-        isWaiting = false;
+        playerState = PlayerState.Play;
+    }
+    
+    private void RecallInput()
+    {
+        if (Input.GetKeyDown(KeyCode.E) && canRecall)
+        {
+            canRecall = false;
+            uiManager.ApplyRecallImageAlphaValue(canRecall);
+            StartCoroutine(Recall());
+        }
+    }
+    
+    private IEnumerator Recall()
+    {
+        playerState = PlayerState.Recall;
+        canCollectRecallData = false;
+        photonView.RPC("StartRecallRPC", RpcTarget.All);
+        //ADSしているならReset
+        ResetAim();
+
+        float secondsForEachData = recallDuration / recallData.Count;
+        Vector3 currentDataPlayerStartPos = transform.position;
+        Quaternion currentDataPlayerStartRot = transform.rotation;
+        Quaternion currentDataCamaraStartRot = playerCam.transform.rotation;
+        
+        //SE鳴らす
+        audioSource.PlayOneShot(recallSEClip);
+
+        while (recallData.Count > 0)
+        {
+            float t = 0f;
+            while (t < secondsForEachData)
+            {
+                transform.position = Vector3.Lerp(currentDataPlayerStartPos,
+                    recallData[recallData.Count - 1].pos,
+                    t / secondsForEachData);
+                transform.rotation = Quaternion.Lerp(currentDataPlayerStartRot,
+                    recallData[recallData.Count - 1].rot,
+                    t / secondsForEachData);
+                playerCam.transform.rotation = Quaternion.Lerp(currentDataCamaraStartRot,
+                    recallData[recallData.Count - 1].camRot,
+                    t / secondsForEachData);
+                t += Time.deltaTime;
+
+                yield return null;
+            }
+
+            currentDataPlayerStartPos = recallData[recallData.Count - 1].pos;
+            currentDataPlayerStartRot = recallData[recallData.Count - 1].rot;
+            currentDataCamaraStartRot = recallData[recallData.Count - 1].camRot;
+            
+            recallData.RemoveAt(recallData.Count - 1);
+        }
+        
+        playerState = PlayerState.Play;
+        canCollectRecallData = true;
+        photonView.RPC("EndRecallRPC", RpcTarget.All);
+    }
+    private void StoreRecallData()
+    {
+        currentDataTimer += Time.deltaTime;
+
+        if (canCollectRecallData)
+        {
+            if (currentDataTimer >= secondsBetweenData)
+            {
+                if (recallData.Count >= maxRecallData)
+                {
+                    recallData.RemoveAt(0);
+                }
+                recallData.Add(GetRecallData());
+                currentDataTimer = 0;
+            }
+        }
+    }
+
+    private RecallData GetRecallData()
+    {
+        return new RecallData()
+        {
+            pos = transform.position,
+            rot = transform.rotation,
+            camRot = playerCam.transform.rotation
+        };
+    }
+    
+    //リコール始まったとき
+    [PunRPC]
+    private void StartRecallRPC()
+    {
+        //モデルを非表示
+        skinnedMeshRenderer.enabled = false;
+        //当たり判定も無効
+        playerCollider.enabled = false;
+        //銃も非表示
+        weaponHolder2.SetActive(false);
+    }
+    
+    //リコール終わったとき
+    [PunRPC]
+    private void EndRecallRPC()
+    {
+        //モデルを表示
+        skinnedMeshRenderer.enabled = true;
+        //当たり判定も有効
+        playerCollider.enabled = true;
+        //銃も非表示
+        weaponHolder2.SetActive(true);
     }
 }

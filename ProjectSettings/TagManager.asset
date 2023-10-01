@@ -7,6 +7,9 @@ TagManager:
   - UIManager
   - SpawnManager
   - GameManager
+  - GunCamera
+  - BulletImpactParent
+  - HitEffect
   layers:
   - Default
   - TransparentFX
@@ -15,9 +18,9 @@ TagManager:
   - Water
   - UI
   - Ground
+  - Gun
   - 
-  - 
-  - 
+  - Volume
   - 
   - 
   - 

@@ -1,6 +1,7 @@
 using UnityEngine.UI;
 using UnityEngine;
 
+//シングルトンにした方がいいかも？
 public class UIManager : MonoBehaviour
 {
     //ammoText
@@ -55,9 +56,39 @@ public class UIManager : MonoBehaviour
     private Text countDownText = null;
     public Text CountDownText => countDownText;
     
-
-
-
+    //Gun Image
+    [SerializeField] 
+    private Image[] gunImageList;
+    
+    //ReloadingText
+    [SerializeField]
+    private GameObject[] reloadingTexts = null;
+    
+    //Recall Image
+    [SerializeField] 
+    private Image recallImage = null;
+    
+    //RoundNumber
+    [SerializeField] 
+    private Text roundNumberText = null;
+    
+    //Round前の説明文(逃げても勝ちver)
+    [SerializeField]
+    private GameObject beforeRoundExplainCanEscape = null;
+    
+    //Round前の説明文(倒さないとダメver)
+    [SerializeField] 
+    private GameObject beforeRoundExplainCannotEscape = null;
+    
+    //WinnerNameText
+    [SerializeField] 
+    private Text winnerNameText = null;
+    
+    //DisconnectPanel
+    [SerializeField] 
+    private GameObject disconnectPanel = null;
+    
+    
     public void SetBulletText(int ammoClip,int ammunition)
     {
         bulletText.text = ammoClip + "/" + ammunition;
@@ -134,5 +165,54 @@ public class UIManager : MonoBehaviour
     {
         player2RoundText.text = player2Round.ToString("0");
     }
+
+    public void ApplyGunImageAlphaValue(int gunIndex)
+    {
+        if (gunImageList.Length != 2) return;
+        gunImageList[gunIndex].color = new Color(0.0f, 0.0f, 0.0f,1.0f);
+        gunImageList[1 - gunIndex].color = new Color(0.0f, 0.0f, 0.0f,0.3f);
+    }
+
+    public void SetActiveReloadingText(int reloadGunIndex, bool flag)
+    {
+        reloadingTexts[reloadGunIndex].SetActive(flag);
+    }
+
+    public void ApplyRecallImageAlphaValue(bool canUse)
+    {
+        if (canUse) recallImage.color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+        else recallImage.color = new Color(1.0f, 1.0f, 1.0f, 0.3f);
+    }
+
+    public void SetRoundNumber(int roundNumber)
+    {
+        roundNumberText.text = roundNumber.ToString();
+    }
     
+    public void SetActiveExplainCanEscape(bool isActive)
+    {
+        beforeRoundExplainCanEscape.SetActive(isActive);
+    }
+
+    public void SetActiveExplainCannotEscape(bool isActive)
+    {
+        beforeRoundExplainCannotEscape.SetActive(isActive);
+    }
+
+    public void CloseInGameExplainTexts()
+    {
+        CloseReloadText();
+        SetActiveReloadingText(0,false);
+        SetActiveReloadingText(1, false);
+    }
+
+    public void SetWinnerNameText(string str)
+    {
+        winnerNameText.text = str;
+    }
+
+    public void SetActiveDisconnectPanel(bool isActive)
+    {
+        disconnectPanel.SetActive(isActive);
+    }
 }
